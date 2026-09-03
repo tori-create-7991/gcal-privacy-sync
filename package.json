@@ -1,5 +1,5 @@
 {
-  "name": "copy-google-calendar",
+  "name": "gcal-privacy-sync",
   "version": "1.0.0",
   "description": "Google Calendar同期スクリプト - 複数の共有カレンダーから予定をコピーして同期",
   "scripts": {

@@ -1,6 +1,8 @@
-# Google Calendar 同期スクリプト (GAS)
+# gcal-privacy-sync
 
 同じGoogleアカウント内の複数カレンダー（共有カレンダーなど）から予定をコピーして同期するGoogle Apps Scriptです。
+
+タイトルや詳細を「予定あり」に匿名化してコピーできるため、Outlookなど他社カレンダーへiCal購読で連携する際の「予定ありブロック」用カレンダーを作る用途にも使えます（下記「他社カレンダー（Outlookなど）との連携」参照）。
 
 ## 機能
 
@@ -26,6 +28,7 @@
 │   └── inject-sync-pairs.js  # CI で SYNC_PAIRS_JSON を注入
 ├── .github/workflows/deploy.yml
 ├── package.json
+├── LICENSE
 └── README.md
 ```
 
@@ -298,6 +301,30 @@ function getSyncPairsRaw() {
 - Google Apps Script の実行時間制限（6分/回）があります
 - 大量の予定がある場合は `DAYS_BEFORE` / `DAYS_AFTER` を小さくしてください
 
+## 他社カレンダー（Outlookなど）との連携
+
+このスクリプトのコピー先はGoogleカレンダー限定です。Outlookなど他社カレンダーに「予定あり」だけを見せたい場合は、次の手順で「中継カレンダー」を経由させます。
+
+1. Googleで「予定あり」専用の新規カレンダーを作成する（例: `Busy Block`）
+2. `getSyncPairsRaw()` の `destinations` にこの新規カレンダーを追加し、`eventTitle: '予定あり'`, `showAsBusy: true` を指定する
+
+   ```javascript
+   {
+     name: '本業カレンダー',
+     sourceCalendarId: 'work@example.com',
+     destinations: [
+       { calendarId: 'primary' }, // 既存の全文コピー
+       { calendarId: 'busy-block@group.calendar.google.com', eventTitle: '予定あり', showAsBusy: true },
+     ],
+   }
+   ```
+
+3. `Busy Block` カレンダーの設定画面 → 「カレンダーの統合」→ **Secret address in iCal format** をコピーする
+   （Public address は非公開のまま使えないため、必ず Secret address を使う）
+4. Outlook側で「インターネットカレンダーの購読」にそのURLを貼る
+
+これでOutlook側にはタイトル・詳細を伏せた「予定あり」だけが数十分単位のラグで反映される。双方向・即時反映が必要な場合は OneCal / Reclaim.ai 等のサードパーティ同期サービスを検討してください。
+
 ## ライセンス
 
-MIT License
+[MIT License](LICENSE)
