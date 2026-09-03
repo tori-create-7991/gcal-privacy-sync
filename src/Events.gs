@@ -8,7 +8,7 @@
 function createEvent(destCalendar, sourceEvent, pair, syncTag, uniqueKey, commonConfig) {
   const title = pair.eventTitle || sourceEvent.getTitle();
   const effectiveConfig = buildEffectiveConfig(commonConfig, pair);
-  const description = buildDescription(sourceEvent, pair, syncTag, uniqueKey, effectiveConfig);
+  const description = buildDisplayDescription(sourceEvent, effectiveConfig);
 
   let newEvent;
 
@@ -32,6 +32,7 @@ function createEvent(destCalendar, sourceEvent, pair, syncTag, uniqueKey, common
   }
 
   newEvent.setDescription(description);
+  applySyncTags(newEvent, syncTag, uniqueKey);
 
   if (pair.eventColor) {
     newEvent.setColor(String(pair.eventColor));
@@ -57,7 +58,8 @@ function updateEvent(existingEvent, sourceEvent, pair, syncTag, uniqueKey, commo
     existingEvent.setTime(sourceEvent.getStartTime(), sourceEvent.getEndTime());
   }
 
-  existingEvent.setDescription(buildDescription(sourceEvent, pair, syncTag, uniqueKey, effectiveConfig));
+  existingEvent.setDescription(buildDisplayDescription(sourceEvent, effectiveConfig));
+  applySyncTags(existingEvent, syncTag, uniqueKey);
 
   if (pair.eventColor) {
     existingEvent.setColor(String(pair.eventColor));
@@ -95,10 +97,15 @@ function needsUpdate(sourceEvent, existingEvent, pair, commonConfig, syncTag, un
     }
   }
 
-  // description (includeOriginalLink 差分など) の差分を検出
+  // description (descriptionMode 差分など) の差分を検出
   const effectiveConfig = buildEffectiveConfig(commonConfig, pair);
-  const expectedDesc = buildDescription(sourceEvent, pair, syncTag, uniqueKey, effectiveConfig);
+  const expectedDesc = buildDisplayDescription(sourceEvent, effectiveConfig);
   if ((existingEvent.getDescription() || '') !== expectedDesc) {
+    return true;
+  }
+
+  // 同期タグの差分を検出（旧description埋め込み方式からの移行や再同期を確実に検出する）
+  if (getEventSourceId(existingEvent, syncTag) !== uniqueKey) {
     return true;
   }
 
@@ -120,27 +127,67 @@ function needsUpdate(sourceEvent, existingEvent, pair, commonConfig, syncTag, un
 }
 
 /**
- * 予定の説明文を作成する
+ * 予定の説明文を作成する（ユーザーに見える内容のみ。同期の追跡情報は含まない）
+ *
+ * DESCRIPTION_MODE:
+ *   'full' - 元イベントのdescriptionをそのままコピー
+ *   'link' - 元予定へのリンクのみ
+ *   'none' - 常に空文字（デフォルト）
  */
-function buildDescription(sourceEvent, pair, syncTag, uniqueKey, commonConfig) {
-  let description = syncTag + ' SourceID:' + uniqueKey;
+function buildDisplayDescription(sourceEvent, effectiveConfig) {
+  const mode = effectiveConfig.DESCRIPTION_MODE;
 
-  if (commonConfig.INCLUDE_ORIGINAL_LINK) {
-    const eventUrl = 'https://calendar.google.com/calendar/event?eid=' +
-      Utilities.base64Encode(sourceEvent.getId().split('@')[0] + ' ' + pair.sourceCalendarId);
-    description += '\n\n元の予定: ' + eventUrl;
+  if (mode === 'full') {
+    return sourceEvent.getDescription() || '';
   }
 
-  return description;
+  if (mode === 'link') {
+    const eventUrl = 'https://calendar.google.com/calendar/event?eid=' +
+      Utilities.base64Encode(sourceEvent.getId().split('@')[0] + ' ' + effectiveConfig.sourceCalendarId);
+    return '元の予定: ' + eventUrl;
+  }
+
+  return '';
+}
+
+/**
+ * 同期の追跡情報（SYNC_TAG / SourceID）を予定の非表示メタデータ（Tag）に書き込む
+ * descriptionには一切書き込まない
+ */
+function applySyncTags(event, syncTag, uniqueKey) {
+  event.setTag(SYNC_TAG_KEY, syncTag);
+  event.setTag(SOURCE_ID_TAG_KEY, uniqueKey);
+}
+
+/**
+ * 予定の非表示メタデータから、このスクリプトが作成したコピーかどうかを判定し、
+ * そうであれば SourceID を返す（syncTag が一致しない/タグが無い場合は null）
+ */
+function getEventSourceId(event, expectedSyncTag) {
+  try {
+    if (event.getTag(SYNC_TAG_KEY) !== expectedSyncTag) {
+      return null;
+    }
+    return event.getTag(SOURCE_ID_TAG_KEY) || null;
+  } catch (e) {
+    return null;
+  }
 }
 
 /**
  * 共通設定 + コピー先設定をマージした設定を作る
  */
 function buildEffectiveConfig(commonConfig, pair) {
+  const descriptionMode = pair.descriptionMode != null
+    ? pair.descriptionMode
+    : (pair.includeOriginalLink != null
+        ? (pair.includeOriginalLink ? 'link' : 'none')
+        : (commonConfig.INCLUDE_ORIGINAL_LINK ? 'link' : 'none'));
+
   return Object.assign({}, commonConfig, {
     SHOW_AS_BUSY: pair.showAsBusy != null ? pair.showAsBusy : commonConfig.SHOW_AS_BUSY,
-    INCLUDE_ORIGINAL_LINK: pair.includeOriginalLink != null ? pair.includeOriginalLink : commonConfig.INCLUDE_ORIGINAL_LINK,
+    DESCRIPTION_MODE: descriptionMode,
+    sourceCalendarId: pair.sourceCalendarId,
   });
 }
 
@@ -158,16 +205,4 @@ function applyVisibilityConfig(event, config) {
   } catch (e) {
     // ignore
   }
-}
-
-/**
- * 説明文からソースイベントIDを抽出する
- */
-function extractSourceEventId(description, syncTag) {
-  if (!description || !description.includes(syncTag)) {
-    return null;
-  }
-
-  const match = description.match(/SourceID:([^\s\n]+)/);
-  return match ? match[1] : null;
 }

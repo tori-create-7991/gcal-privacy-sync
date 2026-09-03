@@ -44,8 +44,7 @@ function clearSyncedEvents() {
     let deletedCount = 0;
 
     events.forEach(event => {
-      const desc = event.getDescription() || '';
-      if (desc.includes(syncTag)) {
+      if (getEventSourceId(event, syncTag) !== null) {
         event.deleteEvent();
         deletedCount++;
       }

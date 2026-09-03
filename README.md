@@ -145,8 +145,11 @@ clasp push
    | `eventTitle` | | このコピー先専用のタイトル（省略でソース側のデフォルトを使用） |
    | `eventColor` | | このコピー先専用の色（省略でソース側のデフォルトを使用） |
    | `showAsBusy` | | このコピー先を「予定あり（busy）」として表示するか（省略で共通設定の `SHOW_AS_BUSY` を使用） |
-   | `includeOriginalLink` | | 元の予定リンクを説明文に含めるか（省略で共通設定の `INCLUDE_ORIGINAL_LINK` を使用） |
+   | `descriptionMode` | | コピー先の予定に表示するdescription。`'full'`(元イベントのdescriptionをそのままコピー) / `'link'`(元予定へのリンクのみ) / `'none'`(常に空文字、省略時のデフォルト) |
+   | `includeOriginalLink` | | 後方互換用。`descriptionMode`未指定時のみ、`true`→`'link'`, `false`→`'none'`として扱われる |
    | `organizerDestinations` | | （任意）主催者などの条件で **別カレンダーへコピー先を切り替える**ルール配列（下記） |
+
+   > 同期の追跡情報（どのソースイベントのコピーか）はdescriptionには一切書き込まず、予定の非表示メタデータ（`CalendarEvent.setTag`）に保持する。`descriptionMode: 'full'`にしても追跡用の文字列が混ざることはない。
 
    > **Note**: `SYNC_PAIRS_JSON` が未設定の場合、`src/Config.gs` のデフォルト値がそのまま使われます。
 
@@ -314,7 +317,7 @@ function getSyncPairsRaw() {
      sourceCalendarId: 'work@example.com',
      destinations: [
        { calendarId: 'primary' }, // 既存の全文コピー
-       { calendarId: 'busy-block@group.calendar.google.com', eventTitle: '予定あり', showAsBusy: true },
+       { calendarId: 'busy-block@group.calendar.google.com', eventTitle: '予定あり', showAsBusy: true, descriptionMode: 'none' },
      ],
    }
    ```

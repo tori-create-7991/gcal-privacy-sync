@@ -102,13 +102,12 @@ function syncSinglePair(pair, commonConfig) {
     const cal = destCalendars[destId];
     if (!cal) return;
     const synced = (cal.getEvents(startDate, endDate) || []).filter(function(event) {
-      const desc = event.getDescription() || '';
-      return desc.indexOf(syncTag) !== -1;
+      return getEventSourceId(event, syncTag) !== null;
     });
     allSyncedByDest[destId] = synced;
     const m = new Map();
     synced.forEach(function(event) {
-      const uniqueKey = extractSourceEventId(event.getDescription(), syncTag);
+      const uniqueKey = getEventSourceId(event, syncTag);
       if (uniqueKey) m.set(uniqueKey, event);
     });
     syncedMaps[destId] = m;
@@ -160,7 +159,7 @@ function syncSinglePair(pair, commonConfig) {
     const cal = destCalendars[destId];
     if (!cal) return;
     (allSyncedByDest[destId] || []).forEach(function(syncedEvent) {
-      const sourceKey = extractSourceEventId(syncedEvent.getDescription(), syncTag);
+      const sourceKey = getEventSourceId(syncedEvent, syncTag);
       if (!sourceKey) return;
 
       if (!sourceEventKeys.has(sourceKey)) {

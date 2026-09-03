@@ -5,11 +5,24 @@
  */
 
 /**
+ * 同期の追跡情報（非表示メタデータ）に使うタグキー
+ * CalendarEvent.setTag / getTag で読み書きする。descriptionには一切書き込まない
+ */
+var SYNC_TAG_KEY = 'gcalPrivacySync.syncTag';
+var SOURCE_ID_TAG_KEY = 'gcalPrivacySync.sourceId';
+
+/**
  * 同期するカレンダーの設定を取得する
  *
  * destinations 配列でコピー先ごとに calendarId / eventTitle / eventColor を個別指定可能。
  * eventTitle / eventColor を省略するとソース側のデフォルト値が使われる。
  * showAsBusy / includeOriginalLink もコピー先ごとに指定可能（省略で共通設定にフォールバック）。
+ *
+ * descriptionMode（コピー先ごと、任意）: コピー先の予定に表示するdescriptionの内容。
+ *   'full' - 元イベントのdescriptionをそのままコピー
+ *   'link' - 元予定へのリンクのみ
+ *   'none' - 常に空文字（省略時はこれ。includeOriginalLink指定時は後方互換で 'link'/'none' に自動変換）
+ * 同期の追跡情報（SYNC_TAG/SourceID）はdescriptionには出さず、予定の非表示メタデータに保持する。
  *
  * organizerDestinations（任意）: そのコピー先について、主催者などの条件で別カレンダーへコピー先を切り替える。
  * 通常の同期ループ内で Calendar API の Events.get により主催者を判定します（Events.move は使いません）。
@@ -36,7 +49,7 @@ function getSyncPairsRaw() {
           eventTitle: '外出',
           eventColor: 6,
           showAsBusy: true,
-          includeOriginalLink: false,
+          descriptionMode: 'none', // 'full' | 'link' | 'none'（省略時は 'none'）
           // 例: 社外ドメイン主催のときだけ別カレンダーへ
           // organizerDestinations: [
           //   {
@@ -78,6 +91,7 @@ function getSyncPairs() {
           eventColor: d.eventColor != null ? d.eventColor : pair.eventColor,
           showAsBusy: d.showAsBusy,
           includeOriginalLink: d.includeOriginalLink,
+          descriptionMode: d.descriptionMode,
           organizerDestinations: d.organizerDestinations,
         };
       });
@@ -96,6 +110,7 @@ function getSyncPairs() {
         eventColor: dest.eventColor,
         showAsBusy: dest.showAsBusy,
         includeOriginalLink: dest.includeOriginalLink,
+        descriptionMode: dest.descriptionMode,
         organizerDestinations: dest.organizerDestinations,
       });
     });
@@ -113,8 +128,7 @@ function getCommonConfig() {
     DAYS_BEFORE: 7,   // 過去7日分
     DAYS_AFTER: 30,   // 未来30日分
 
-    // コピーした予定の説明文に追加するプレフィックス
-    // 同期元を識別するために使用
+    // 同期元を識別するための内部タグ（予定の非表示メタデータに書き込む。descriptionには出さない）
     SYNC_TAG: '[CalendarSync]',
 
     // 終日イベントもコピーするか
