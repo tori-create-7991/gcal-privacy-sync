@@ -35,6 +35,7 @@ function formatDest(d) {
   if (d.eventTitle != null) lines.push(I3 + 'eventTitle: ' + JSON.stringify(d.eventTitle) + ',');
   if (d.eventColor != null) lines.push(I3 + 'eventColor: ' + d.eventColor + ',');
   if (d.showAsBusy != null) lines.push(I3 + 'showAsBusy: ' + d.showAsBusy + ',');
+  if (d.descriptionMode != null) lines.push(I3 + 'descriptionMode: ' + JSON.stringify(d.descriptionMode) + ',');
   if (d.includeOriginalLink != null) lines.push(I3 + 'includeOriginalLink: ' + d.includeOriginalLink + ',');
   if (d.organizerDestinations != null && Array.isArray(d.organizerDestinations) && d.organizerDestinations.length > 0) {
     lines.push(I3 + 'organizerDestinations: [');
