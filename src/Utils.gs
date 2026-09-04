@@ -99,6 +99,20 @@ function clearSyncedEventsForPair(pairIndex) {
 }
 
 /**
+ * 招待されているが「参加しない」予定かどうかを判定する
+ * 対象: いいえ（辞退）/ 未回答（まだ返事していない）
+ * 自分が主催者(OWNER)・参加済み(YES)・保留(MAYBE)・招待者のいない単独の予定は対象外
+ */
+function isNotAttending(event) {
+  try {
+    const status = event.getMyStatus();
+    return status === CalendarApp.GuestStatus.NO || status === CalendarApp.GuestStatus.INVITED;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
  * ログ出力
  */
 function log(message) {

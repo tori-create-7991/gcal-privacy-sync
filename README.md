@@ -284,6 +284,7 @@ function getSyncPairsRaw() {
 | `DAYS_BEFORE` | 過去何日分を同期 | `7` |
 | `DAYS_AFTER` | 未来何日分を同期 | `30` |
 | `COPY_ALL_DAY_EVENTS` | 終日イベントもコピー | `false` |
+| `EXCLUDE_NOT_ATTENDING` | 招待されているが「いいえ」または未回答の予定を同期対象から除外 | `true` |
 | `DEBUG_MODE` | デバッグログを出力 | `false` |
 
 ## 便利な関数

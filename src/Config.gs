@@ -134,6 +134,9 @@ function getCommonConfig() {
     // 終日イベントもコピーするか
     COPY_ALL_DAY_EVENTS: false,
 
+    // 招待されているが「参加しない」（いいえ/未回答）予定を同期対象から除外するか
+    EXCLUDE_NOT_ATTENDING: true,
+
     // コピー先の予定を「予定あり」として表示するか
     SHOW_AS_BUSY: true,
 

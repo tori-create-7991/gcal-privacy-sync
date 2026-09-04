@@ -116,6 +116,13 @@ function syncSinglePair(pair, commonConfig) {
   const sourceEventKeys = new Set();
 
   sourceEvents.forEach(function(sourceEvent) {
+    if (commonConfig.EXCLUDE_NOT_ATTENDING && isNotAttending(sourceEvent)) {
+      // sourceEventKeys に加えない: 過去に参加予定でコピー済みだった場合、
+      // 後段の削除ループで「ソースから消えた」扱いになり自動的に削除される
+      result.skipped++;
+      return;
+    }
+
     const startTime = sourceEvent.isAllDayEvent()
       ? sourceEvent.getAllDayStartDate().getTime()
       : sourceEvent.getStartTime().getTime();
