@@ -11,6 +11,11 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # step-level `if` は自身の env を参照できないため job-level で定義する
+      SYNC_PAIRS_JSON: ${{ secrets.SYNC_PAIRS_JSON }}
 
     steps:
       - name: Checkout repository
@@ -25,21 +30,18 @@ jobs:
         run: npm install -g @google/clasp
 
       - name: Create .clasprc.json
-        run: |
-          echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
 
       - name: Create .clasp.json
-        run: |
-          echo '{
-            "scriptId": "${{ secrets.SCRIPT_ID }}",
-            "rootDir": "src"
-          }' > .clasp.json
+        env:
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: printf '{"scriptId":"%s","rootDir":"src"}' "$SCRIPT_ID" > .clasp.json
 
       - name: Inject calendar sync pairs from secret
         if: ${{ env.SYNC_PAIRS_JSON != '' }}
         run: node scripts/inject-sync-pairs.js
-        env:
-          SYNC_PAIRS_JSON: ${{ secrets.SYNC_PAIRS_JSON }}
 
       - name: Push to Google Apps Script
         run: clasp push --force
