@@ -25,7 +25,10 @@
 │   ├── Utils.gs / Debug.gs / Triggers.gs
 │   └── appsscript.json
 ├── scripts/
-│   └── inject-sync-pairs.js  # CI で SYNC_PAIRS_JSON を注入
+│   ├── inject-sync-pairs.js  # CI で SYNC_PAIRS_JSON を注入
+│   └── build-flow-package.js # Power Automate インポート用 zip を生成
+├── power-automate/
+│   └── flow-definition.json  # Outlook 側コピーフローの定義（任意）
 ├── .github/workflows/deploy.yml
 ├── package.json
 ├── LICENSE
@@ -328,6 +331,37 @@ function getSyncPairsRaw() {
 4. Outlook側で「インターネットカレンダーの購読」にそのURLを貼る
 
 これでOutlook側にはタイトル・詳細を伏せた「予定あり」だけが数十分単位のラグで反映される。双方向・即時反映が必要な場合は OneCal / Reclaim.ai 等のサードパーティ同期サービスを検討してください。
+
+### 購読した予定を社内の空き時間表示に出す（Power Automate）
+
+購読したカレンダーはOutlook上で「別の予定表」として扱われ、同僚のスケジュールアシスタント（空き時間表示）には出ません。社内に「予定あり」を見せたい場合は、購読カレンダーの予定を既定の予定表へコピーするPower Automateフローを使います。
+
+- 使うのは標準の Office 365 Outlook コネクタだけです（Premiumライセンス・Googleコネクタ・アプリ登録は不要）
+- 1時間ごとに、今から60日先までの予定を差分同期します（件名・開始・終了が同じものはそのまま、増えた分を作成、消えた分を削除）
+- コピーした予定にはカテゴリ `GcalSync` が付きます。フローが削除するのはこのカテゴリが付いた予定だけで、手入力の予定には触れません
+- 件名は購読カレンダーのものをそのまま使います。伏せたい場合は上記手順2の `eventTitle` で匿名化してください
+
+#### 手順
+
+1. 上記手順4の購読を **Outlook on the web**（または新しいOutlook）で行う。従来のデスクトップ版Outlookで購読したカレンダーはPower Automateから見えません
+2. インポート用のzipを生成する。`--source` には購読カレンダーのOutlook上の表示名を、`--target` には既定の予定表の名前を指定する（省略時は `Calendar`。日本語環境では `予定表`）
+
+   ```bash
+   npm run build:flow -- --source "Busy Block" --target "予定表"
+   ```
+
+   `dist/outlook-busy-copy.zip` が出力されます。
+3. [Power Automate](https://make.powerautomate.com) →「マイ フロー」→「インポート」→「パッケージのインポート (レガシ)」で zip をアップロードする
+4. 「関連リソース」の Office 365 Outlook 接続で「インポート時に選択」を開き、自分の接続を選ぶ（無ければ新規作成）→「インポート」
+5. インポートされたフロー `Outlook Busy Copy` を開いてオンにし、「テスト」で1回手動実行して既定の予定表に予定が入ることを確認する
+
+カレンダーはIDではなく名前で実行時に探すため、インポート後にフローを編集する必要はありません。カレンダー名を変えた場合は zip を作り直して再インポートしてください。
+
+#### 注意
+
+- 反映にはラグがあります。Outlook側の購読カレンダー更新は数時間単位で、こちらからは制御できません
+- 指定した名前のカレンダーが見つからない場合、フローは何も削除せずに失敗します。実行履歴でエラーを確認してください
+- フローをやめるときは、フローをオフにしたあと、Outlookでカテゴリ `GcalSync` の予定を絞り込んで削除してください
 
 ## ライセンス
 
