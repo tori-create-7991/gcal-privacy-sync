@@ -24,6 +24,11 @@
             "frequency": "Hour",
             "interval": 1
           },
+          "runtimeConfiguration": {
+            "concurrency": {
+              "runs": 1
+            }
+          },
           "type": "Recurrence"
         }
       },
@@ -118,7 +123,7 @@
           "type": "Select",
           "inputs": {
             "from": "@outputs('Get_source_events')?['body/value']",
-            "select": "@concat(coalesce(item()?['subject'], ''), '|', item()?['start'], '|', item()?['end'])"
+            "select": "@concat(coalesce(item()?['subject'], ''), '|', formatDateTime(item()?['start'], 'yyyy-MM-ddTHH:mm'), '|', formatDateTime(item()?['end'], 'yyyy-MM-ddTHH:mm'))"
           }
         },
         "Managed_keys": {
@@ -128,7 +133,7 @@
           "type": "Select",
           "inputs": {
             "from": "@body('Managed_events')",
-            "select": "@concat(coalesce(item()?['subject'], ''), '|', item()?['start'], '|', item()?['end'])"
+            "select": "@concat(coalesce(item()?['subject'], ''), '|', formatDateTime(item()?['start'], 'yyyy-MM-ddTHH:mm'), '|', formatDateTime(item()?['end'], 'yyyy-MM-ddTHH:mm'))"
           }
         },
         "To_delete": {
@@ -138,7 +143,7 @@
           "type": "Query",
           "inputs": {
             "from": "@body('Managed_events')",
-            "where": "@not(contains(body('Source_keys'), concat(coalesce(item()?['subject'], ''), '|', item()?['start'], '|', item()?['end'])))"
+            "where": "@not(contains(body('Source_keys'), concat(coalesce(item()?['subject'], ''), '|', formatDateTime(item()?['start'], 'yyyy-MM-ddTHH:mm'), '|', formatDateTime(item()?['end'], 'yyyy-MM-ddTHH:mm'))))"
           }
         },
         "To_create": {
@@ -148,7 +153,7 @@
           "type": "Query",
           "inputs": {
             "from": "@outputs('Get_source_events')?['body/value']",
-            "where": "@not(contains(body('Managed_keys'), concat(coalesce(item()?['subject'], ''), '|', item()?['start'], '|', item()?['end'])))"
+            "where": "@not(contains(body('Managed_keys'), concat(coalesce(item()?['subject'], ''), '|', formatDateTime(item()?['start'], 'yyyy-MM-ddTHH:mm'), '|', formatDateTime(item()?['end'], 'yyyy-MM-ddTHH:mm'))))"
           }
         },
         "Delete_stale": {

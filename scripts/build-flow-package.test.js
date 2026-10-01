@@ -25,9 +25,21 @@ function readZip(buf) {
     var name = buf.toString('utf8', pos + 46, pos + 46 + nameLength);
     var dataStart = localOffset + 30 + buf.readUInt16LE(localOffset + 26) + buf.readUInt16LE(localOffset + 28);
     files[name] = zlib.inflateRawSync(buf.subarray(dataStart, dataStart + compressedSize));
+    assert.strictEqual(buf.readUInt32LE(pos + 16), crc32(files[name]), 'CRC mismatch for ' + name);
+    assert.strictEqual(buf.readUInt32LE(pos + 24), files[name].length, 'size mismatch for ' + name);
     pos += 46 + nameLength + buf.readUInt16LE(pos + 30) + buf.readUInt16LE(pos + 32);
   }
   return files;
+}
+
+/** 実装とは別のビット演算版 CRC-32 (テーブル実装の検証用) */
+function crc32(buf) {
+  var c = 0xffffffff;
+  for (var i = 0; i < buf.length; i++) {
+    c ^= buf[i];
+    for (var k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+  }
+  return (c ^ 0xffffffff) >>> 0;
 }
 
 function collectActions(actions, into) {
@@ -102,6 +114,25 @@ test('deletion only targets events tagged with the managed category', function()
     actions.Create_new.actions.Create_event.inputs.parameters['item/categories'],
     ['GcalSync']
   );
+});
+
+test('source and managed events are compared with the same key expression', function() {
+  var actions = builtDefinition({ source: 'Busy Block' }).properties.definition.actions;
+  var key = actions.Source_keys.inputs.select.replace(/^@/, '');
+  assert.match(key, /subject.*formatDateTime\(item\(\)\?\['start'\].*formatDateTime\(item\(\)\?\['end'\]/);
+  assert.strictEqual(actions.Managed_keys.inputs.select, '@' + key);
+  assert.strictEqual(actions.To_delete.inputs.where, "@not(contains(body('Source_keys'), " + key + '))');
+  assert.strictEqual(actions.To_create.inputs.where, "@not(contains(body('Managed_keys'), " + key + '))');
+  assert.strictEqual(actions.To_create.inputs.from, actions.Source_keys.inputs.from);
+});
+
+test('scheduled runs do not overlap', function() {
+  var trigger = builtDefinition({ source: 'Busy Block' }).properties.definition.triggers.Recurrence;
+  assert.strictEqual(trigger.runtimeConfiguration.concurrency.runs, 1);
+});
+
+test('same source and target calendar is rejected', function() {
+  assert.throws(function() { pkg.buildPackageEntries({ source: 'Calendar' }); }, /同じカレンダー名/);
 });
 
 test('package contains the five files of a legacy flow package', function() {

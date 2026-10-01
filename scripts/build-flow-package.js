@@ -127,10 +127,14 @@ function buildPackageEntries(options) {
   if (!options || !options.source) {
     throw new Error('--source <購読カレンダー名> を指定してください');
   }
+  var target = options.target || DEFAULT_TARGET;
+  if (options.source === target) {
+    throw new Error('--source と --target に同じカレンダー名は指定できません');
+  }
   var template = JSON.parse(fs.readFileSync(TEMPLATE_PATH, 'utf8'));
   var definition = replacePlaceholders(template, {
     __SOURCE_CALENDAR_NAME__: escapeExpressionString(options.source),
-    __TARGET_CALENDAR_NAME__: escapeExpressionString(options.target || DEFAULT_TARGET),
+    __TARGET_CALENDAR_NAME__: escapeExpressionString(target),
   });
 
   var resources = {};
