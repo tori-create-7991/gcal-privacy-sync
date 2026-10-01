@@ -14,8 +14,9 @@ jobs:
     permissions:
       contents: read
     env:
-      # step-level `if` は自身の env を参照できないため job-level で定義する
-      SYNC_PAIRS_JSON: ${{ secrets.SYNC_PAIRS_JSON }}
+      # step-level `if` は自身の env を参照できないため、有無フラグのみ job-level に置く
+      # (secret 本体は注入ステップにだけ渡し、他ステップ・npm パッケージから見せない)
+      HAS_SYNC_PAIRS: ${{ secrets.SYNC_PAIRS_JSON != '' }}
 
     steps:
       - name: Checkout repository
@@ -40,7 +41,9 @@ jobs:
         run: printf '{"scriptId":"%s","rootDir":"src"}' "$SCRIPT_ID" > .clasp.json
 
       - name: Inject calendar sync pairs from secret
-        if: ${{ env.SYNC_PAIRS_JSON != '' }}
+        if: ${{ env.HAS_SYNC_PAIRS == 'true' }}
+        env:
+          SYNC_PAIRS_JSON: ${{ secrets.SYNC_PAIRS_JSON }}
         run: node scripts/inject-sync-pairs.js
 
       - name: Push to Google Apps Script
