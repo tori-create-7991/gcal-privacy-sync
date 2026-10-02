@@ -104,16 +104,36 @@ function clearSyncedEventsForPair(pairIndex) {
  * どのペアからも管理されなくなり残り続ける。設定変更後に手動で1回実行する。
  * 対象は「現在の設定でコピー先になっているカレンダー」の同期期間内の予定のみ。
  * コピー先から完全に外したカレンダーは走査しない。
+ * 先に previewOrphanedSyncedEvents() で削除対象を確認すること。
  */
 function clearOrphanedSyncedEvents() {
+  processOrphanedSyncedEvents(false);
+}
+
+/**
+ * clearOrphanedSyncedEvents() が削除する予定をログに出すだけで、削除はしない
+ */
+function previewOrphanedSyncedEvents() {
+  processOrphanedSyncedEvents(true);
+}
+
+function processOrphanedSyncedEvents(dryRun) {
   const commonConfig = getCommonConfig();
-  const allowedByDest = {};
+  // 同じカレンダーが別のID表記（'primary' とメールアドレス等）で指定されていても
+  // 1回だけ走査するよう、実カレンダーIDでまとめる
+  const targets = {};
 
   getSyncPairs().forEach(pair => {
     const syncTag = commonConfig.SYNC_TAG + '[' + pair.sourceCalendarId + ']';
     Object.keys(getOrganizerRoutingDestinationIds(pair)).forEach(destId => {
-      if (!allowedByDest[destId]) allowedByDest[destId] = {};
-      allowedByDest[destId][syncTag] = true;
+      const destCalendar = CalendarApp.getCalendarById(destId);
+      if (!destCalendar) {
+        Logger.log('カレンダーが見つかりません: ' + destId);
+        return;
+      }
+      const key = destCalendar.getId();
+      if (!targets[key]) targets[key] = { calendar: destCalendar, allowedTags: {} };
+      targets[key].allowedTags[syncTag] = true;
     });
   });
 
@@ -124,28 +144,24 @@ function clearOrphanedSyncedEvents() {
   const endDate = new Date(now);
   endDate.setDate(endDate.getDate() + commonConfig.DAYS_AFTER);
 
-  Object.keys(allowedByDest).forEach(destId => {
-    const destCalendar = CalendarApp.getCalendarById(destId);
-    if (!destCalendar) {
-      Logger.log('カレンダーが見つかりません: ' + destId);
-      return;
-    }
-
-    let deletedCount = 0;
-    destCalendar.getEvents(startDate, endDate).forEach(event => {
+  Object.keys(targets).forEach(key => {
+    const target = targets[key];
+    let count = 0;
+    target.calendar.getEvents(startDate, endDate).forEach(event => {
       let tag = null;
       try {
         tag = event.getTag(SYNC_TAG_KEY);
       } catch (e) {
         return;
       }
-      if (isOrphanedSyncTag(tag, allowedByDest[destId], commonConfig.SYNC_TAG)) {
-        event.deleteEvent();
-        deletedCount++;
-      }
+      if (!isOrphanedSyncTag(tag, target.allowedTags, commonConfig.SYNC_TAG)) return;
+
+      Logger.log((dryRun ? '[削除対象] ' : '[削除] ') + event.getStartTime() + ' ' + event.getTitle() + ' ' + tag);
+      if (!dryRun) event.deleteEvent();
+      count++;
     });
 
-    Logger.log(destCalendar.getName() + ': 孤児コピー ' + deletedCount + '件削除');
+    Logger.log(target.calendar.getName() + ': 孤児コピー ' + count + '件' + (dryRun ? '（未削除）' : '削除'));
   });
 }
 
@@ -169,7 +185,8 @@ function isExcludedTitle(title, excludeTitles) {
   if (!Array.isArray(excludeTitles) || excludeTitles.length === 0) return false;
   const normalized = String(title == null ? '' : title).trim();
   return excludeTitles.some(function(excluded) {
-    return String(excluded).trim() === normalized;
+    // 空文字や文字列以外は無視する（件名なしの予定を誤って除外しないため）
+    return typeof excluded === 'string' && excluded.trim() !== '' && excluded.trim() === normalized;
   });
 }
 

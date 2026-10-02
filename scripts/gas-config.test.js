@@ -56,6 +56,101 @@ test('isExcludedTitle excludes nothing when the list is missing or empty', funct
   assert.strictEqual(utils.isExcludedTitle(null, ['予定あり']), false);
 });
 
+test('isExcludedTitle ignores empty and non-string entries', function() {
+  assert.strictEqual(utils.isExcludedTitle('', ['']), false);
+  assert.strictEqual(utils.isExcludedTitle('  ', [' ']), false);
+  assert.strictEqual(utils.isExcludedTitle('null', [null]), false);
+  assert.strictEqual(utils.isExcludedTitle('1', [1]), false);
+});
+
+/** カレンダーとイベントの最小モックを作り、Utils.gs を評価したコンテキストを返す */
+function loadUtilsWithCalendars(pairs, calendars) {
+  var logs = [];
+  var context = vm.createContext({
+    SYNC_TAG_KEY: 'gcalPrivacySync.syncTag',
+    Logger: { log: function(m) { logs.push(String(m)); } },
+    CalendarApp: {
+      getCalendarById: function(id) {
+        var cal = calendars[id];
+        if (!cal) return null;
+        return {
+          getId: function() { return cal.id; },
+          getName: function() { return cal.id; },
+          getEvents: function() { return cal.events; },
+        };
+      },
+    },
+    getCommonConfig: function() { return { SYNC_TAG: '[CalendarSync]', DAYS_BEFORE: 7, DAYS_AFTER: 30 }; },
+    getSyncPairs: function() { return pairs; },
+    getOrganizerRoutingDestinationIds: function(pair) {
+      var ids = {};
+      ids[pair.destCalendarId] = true;
+      (pair.organizerDestinations || []).forEach(function(r) { ids[r.destCalendarId] = true; });
+      return ids;
+    },
+  });
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'src', 'Utils.gs'), 'utf8'), context);
+  context.logs = logs;
+  return context;
+}
+
+function fakeEvent(title, tag) {
+  var event = {
+    deleted: false,
+    getTag: function() { return tag; },
+    getTitle: function() { return title; },
+    getStartTime: function() { return '2026-10-05T10:00'; },
+    deleteEvent: function() { event.deleted = true; },
+  };
+  return event;
+}
+
+function orphanScenario() {
+  var events = {
+    manual: fakeEvent('手入力', null),
+    kept: fakeEvent('現役ソースのコピー', '[CalendarSync][kept@example.com]'),
+    otherPair: fakeEvent('別ペアのコピー', '[CalendarSync][other@example.com]'),
+    orphan: fakeEvent('外したソースのコピー', '[CalendarSync][removed@example.com]'),
+    routed: fakeEvent('主催者ルートのコピー', '[CalendarSync][kept@example.com]'),
+    routedOrphan: fakeEvent('ルート先の孤児', '[CalendarSync][removed@example.com]'),
+  };
+  var shared = { id: 'me@example.com', events: [events.manual, events.kept, events.otherPair, events.orphan] };
+  var calendars = {
+    primary: shared,
+    'me@example.com': shared,
+    'routed@example.com': { id: 'routed@example.com', events: [events.routed, events.routedOrphan] },
+  };
+  var pairs = [
+    { sourceCalendarId: 'kept@example.com', destCalendarId: 'primary', organizerDestinations: [{ destCalendarId: 'routed@example.com' }] },
+    { sourceCalendarId: 'other@example.com', destCalendarId: 'me@example.com' },
+  ];
+  return { events: events, context: loadUtilsWithCalendars(pairs, calendars) };
+}
+
+test('clearOrphanedSyncedEvents deletes only copies whose source is no longer configured', function() {
+  var s = orphanScenario();
+  s.context.clearOrphanedSyncedEvents();
+
+  assert.strictEqual(s.events.orphan.deleted, true);
+  assert.strictEqual(s.events.routedOrphan.deleted, true);
+  assert.strictEqual(s.events.manual.deleted, false);
+  assert.strictEqual(s.events.kept.deleted, false);
+  assert.strictEqual(s.events.routed.deleted, false);
+  // 同じカレンダーを 'primary' とメールアドレスの両方で指定しても、互いのコピーを消さない
+  assert.strictEqual(s.events.otherPair.deleted, false);
+});
+
+test('previewOrphanedSyncedEvents reports targets without deleting', function() {
+  var s = orphanScenario();
+  s.context.previewOrphanedSyncedEvents();
+
+  Object.keys(s.events).forEach(function(name) {
+    assert.strictEqual(s.events[name].deleted, false, name);
+  });
+  var reported = s.context.logs.filter(function(l) { return l.indexOf('[削除対象]') === 0; });
+  assert.strictEqual(reported.length, 2);
+});
+
 test('isOrphanedSyncTag flags only copies from sources no longer configured for the destination', function() {
   var allowed = { '[CalendarSync][kept@example.com]': true };
   assert.strictEqual(utils.isOrphanedSyncTag('[CalendarSync][kept@example.com]', allowed, '[CalendarSync]'), false);
