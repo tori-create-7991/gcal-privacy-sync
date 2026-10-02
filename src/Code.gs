@@ -123,6 +123,12 @@ function syncSinglePair(pair, commonConfig) {
       return;
     }
 
+    if (isExcludedTitle(sourceEvent.getTitle(), pair.excludeTitles)) {
+      // 上と同じく sourceEventKeys に加えない: コピー済みなら後段の削除ループで削除される
+      result.skipped++;
+      return;
+    }
+
     const startTime = sourceEvent.isAllDayEvent()
       ? sourceEvent.getAllDayStartDate().getTime()
       : sourceEvent.getStartTime().getTime();

@@ -136,6 +136,7 @@ clasp push
    | `destinations` | ○ | コピー先の配列（下記参照） |
    | `eventTitle` | | デフォルトのタイトル（空文字 `""` で元のタイトルを使用） |
    | `eventColor` | | デフォルトの色 1-11（省略でデフォルト色） |
+   | `excludeTitles` | | 件名がこの配列のいずれかに完全一致する予定をコピーしない（例: `["予定あり"]`）。そのソースの全コピー先に効く |
 
    #### destinations 内のフィールド
 
@@ -251,6 +252,7 @@ function getSyncPairsRaw() {
 | `destinations` | コピー先の配列（コピー先ごとに設定可能） | 下記参照 |
 | `eventTitle` | デフォルトのタイトル（空文字で元タイトル） | `'予定あり'` |
 | `eventColor` | デフォルトの色（1-11） | `8` |
+| `excludeTitles` | この件名（完全一致）の予定はコピーしない。そのソースの全コピー先に効く | `['予定あり']` |
 
 **destinations 内の設定項目:**
 
@@ -328,6 +330,37 @@ function getSyncPairsRaw() {
 4. Outlook側で「インターネットカレンダーの購読」にそのURLを貼る
 
 これでOutlook側にはタイトル・詳細を伏せた「予定あり」だけが数十分単位のラグで反映される。双方向・即時反映が必要な場合は OneCal / Reclaim.ai 等のサードパーティ同期サービスを検討してください。
+
+### 戻ってきたコピーを無視する（`excludeTitles`）
+
+コピー先の予定を別サービスが読み、それがまたコピー元に戻ってくる構成では、同じ予定が二重に入ります。
+例: 「予定あり」をOutlookの予定表へ入れ、そのOutlookの予定表をICSでGoogleに取り込み、さらにこのスクリプトのコピー元にしている場合。
+
+コピー元ごとに `excludeTitles` を指定すると、件名が完全一致する予定をコピーしません。
+
+```javascript
+{
+  name: 'Outlook',
+  sourceCalendarId: 'xxxx@import.calendar.google.com',
+  eventTitle: '',
+  excludeTitles: ['予定あり'], // 戻ってきた「予定あり」は無視する
+  destinations: [
+    { calendarId: 'outlook-copy@group.calendar.google.com', descriptionMode: 'full' },
+  ],
+}
+```
+
+- 判定は前後の空白を除いた完全一致です（「午後予定ありのため不在」は除外されません）
+- すでにコピー済みの予定は、次回の同期で自動的に削除されます
+- コピー元に、同じ件名の本物の予定がある場合はそれもコピーされなくなります
+
+### コピー元を付け替えたときの掃除（`clearOrphanedSyncedEvents`）
+
+コピー先からコピー元を外したり、別のコピー元に付け替えたりすると、外したコピー元から作られた既存のコピーは誰にも管理されなくなり、残り続けます。
+設定変更をデプロイしたあと、GASエディタで `clearOrphanedSyncedEvents()` を1回実行すると、現在の設定に無い組み合わせのコピーだけを削除します。
+
+- 対象は、現在の設定でコピー先になっているカレンダーの、同期期間内（`DAYS_BEFORE`〜`DAYS_AFTER`）の予定です
+- このスクリプトが作ったコピー以外（手入力の予定など）は削除しません
 
 ## ライセンス
 

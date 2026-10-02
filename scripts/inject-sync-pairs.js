@@ -2,7 +2,7 @@
  * GitHub Actions 用: SYNC_PAIRS_JSON を Config.gs の getSyncPairsRaw に注入する
  *
  * 注意: destinations に新フィールドを追加するときは、下記 formatDest() /
- * formatOrganizerRule() に対応する分岐を追加すること。ローカル編集
+ * formatOrganizerRule() に対応する分岐を追加すること(ソース側フィールドは末尾の pairs.map 内)。ローカル編集
  * (src/Config.gs 直接編集)では動いても、ここが未対応だと SYNC_PAIRS_JSON
  * 経由のCIデプロイでだけそのフィールドが黙って消える(2026-09発生: descriptionMode)。
  * 新フィールド追加時は両経路(ローカル編集 / SYNC_PAIRS_JSON経由)で動作確認すること。
@@ -70,6 +70,9 @@ var pairsCode = pairs.map(function(p) {
   lines.push(I + '  sourceCalendarId: ' + JSON.stringify(p.sourceCalendarId) + ',');
   if (p.eventTitle != null) lines.push(I + '  eventTitle: ' + JSON.stringify(p.eventTitle) + ',');
   if (p.eventColor != null) lines.push(I + '  eventColor: ' + p.eventColor + ',');
+  if (Array.isArray(p.excludeTitles) && p.excludeTitles.length > 0) {
+    lines.push(I + '  excludeTitles: ' + JSON.stringify(p.excludeTitles) + ',');
+  }
   lines.push(I + '  destinations: [');
   lines.push(dests.map(formatDest).join(',\n'));
   lines.push(I + '  ],');

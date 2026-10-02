@@ -27,6 +27,10 @@ var SOURCE_ID_TAG_KEY = 'gcalPrivacySync.sourceId';
  * organizerDestinations（任意）: そのコピー先について、主催者などの条件で別カレンダーへコピー先を切り替える。
  * 通常の同期ループ内で Calendar API の Events.get により主催者を判定します（Events.move は使いません）。
  *
+ * excludeTitles（ソースごと、任意）: 件名がこの配列のいずれかに完全一致する予定はコピーしない。
+ * そのソースの全コピー先に効く。コピー済みの予定は次回同期で削除される。
+ * 例: コピー先を別サービス経由で読み戻している場合に、戻ってきたコピーを無視する。
+ *
  * 後方互換: destCalendarId（単数）/ destCalendarIds（配列）も引き続き使用可能。
  *
  * CI デプロイ時は GitHub Secret SYNC_PAIRS_JSON の値で自動置換されます。
@@ -66,6 +70,7 @@ function getSyncPairsRaw() {
       sourceCalendarId: 'ここにコピー元カレンダーID2を入力',
       eventTitle: '予定あり',
       eventColor: 7,
+      // excludeTitles: ['予定あり'], // この件名の予定はコピーしない（完全一致）
       destinations: [
         { calendarId: 'primary' },
       ],
@@ -105,6 +110,7 @@ function getSyncPairs() {
       expanded.push({
         name: pair.name + (dests.length > 1 ? ' → ' + dest.calendarId.substring(0, 8) : ''),
         sourceCalendarId: pair.sourceCalendarId,
+        excludeTitles: pair.excludeTitles,
         destCalendarId: dest.calendarId,
         eventTitle: dest.eventTitle,
         eventColor: dest.eventColor,
