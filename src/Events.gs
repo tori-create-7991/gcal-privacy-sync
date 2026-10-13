@@ -220,22 +220,27 @@ function resolveShowAsBusy(config, sourceEvent) {
 /**
  * @param {boolean|null} showAsBusy - コピー先の設定値
  * @param {number|null} durationMs - 予定の長さ（不明なら null）
- * @param {number} freeIfLongerThanHours - この時間以上の予定は free にする（0 や未指定で無効）
+ * @param {number} freeIfLongerThanHours - この時間を超える予定は free にする（0 や未指定で無効）
+ * 1日だけの終日予定はちょうど24時間なので、既定の24では busy のまま
  */
 function shouldShowAsBusy(showAsBusy, durationMs, freeIfLongerThanHours) {
   if (showAsBusy == null) return null;
   if (!showAsBusy) return false;
-  if (freeIfLongerThanHours > 0 && durationMs != null && durationMs >= freeIfLongerThanHours * 60 * 60 * 1000) {
+  if (freeIfLongerThanHours > 0 && durationMs != null && durationMs > freeIfLongerThanHours * 60 * 60 * 1000) {
     return false;
   }
   return true;
 }
 
+var DAY_MS = 24 * 60 * 60 * 1000;
+
 function getEventDurationMs(sourceEvent) {
   if (!sourceEvent) return null;
   try {
     if (sourceEvent.isAllDayEvent()) {
-      return sourceEvent.getAllDayEndDate().getTime() - sourceEvent.getAllDayStartDate().getTime();
+      // 終了日は排他。夏時間の切り替え日でも日数で数えるよう丸める
+      const days = Math.round((sourceEvent.getAllDayEndDate().getTime() - sourceEvent.getAllDayStartDate().getTime()) / DAY_MS);
+      return days * DAY_MS;
     }
     return sourceEvent.getEndTime().getTime() - sourceEvent.getStartTime().getTime();
   } catch (e) {

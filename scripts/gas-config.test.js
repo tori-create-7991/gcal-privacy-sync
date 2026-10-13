@@ -43,7 +43,8 @@ var HOUR = 60 * 60 * 1000;
 
 test('shouldShowAsBusy turns long events free', function() {
   assert.strictEqual(events.shouldShowAsBusy(true, 115 * HOUR, 24), false);
-  assert.strictEqual(events.shouldShowAsBusy(true, 24 * HOUR, 24), false);
+  assert.strictEqual(events.shouldShowAsBusy(true, 25 * HOUR, 24), false);
+  assert.strictEqual(events.shouldShowAsBusy(true, 24 * HOUR, 24), true);
   assert.strictEqual(events.shouldShowAsBusy(true, 23 * HOUR, 24), true);
 });
 
@@ -69,10 +70,18 @@ test('getEventDurationMs measures timed and all-day events', function() {
   };
   assert.strictEqual(events.getEventDurationMs(timed), 115 * HOUR);
   assert.strictEqual(events.getEventDurationMs(allDay), 24 * HOUR);
+  // 1日だけの終日予定は既定の24時間では busy のまま、2日以上なら free
+  assert.strictEqual(events.shouldShowAsBusy(true, events.getEventDurationMs(allDay), 24), true);
+  var dstDay = {
+    isAllDayEvent: function() { return true; },
+    getAllDayStartDate: function() { return new Date(0); },
+    getAllDayEndDate: function() { return new Date(25 * HOUR); },
+  };
+  assert.strictEqual(events.getEventDurationMs(dstDay), 24 * HOUR);
   assert.strictEqual(events.getEventDurationMs(null), null);
 });
 
-test('default config frees events of 24 hours or longer', function() {
+test('default config frees events longer than 24 hours', function() {
   var config = loadGas([path.join(ROOT, 'src', 'Config.gs')]).getCommonConfig();
   assert.strictEqual(config.FREE_IF_LONGER_THAN_HOURS, 24);
 });
