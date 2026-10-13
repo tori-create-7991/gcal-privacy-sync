@@ -354,12 +354,12 @@ Outlookで購読したカレンダーは「別の予定表」として扱われ�
    npm run build:flow -- --source "xxxx@group.calendar.google.com" --target "Calendar"
    ```
 
-   `dist/outlook-busy-copy.zip` が出力されます（カレンダーIDはこのzipにだけ入り、リポには入りません）。
+   `dist/google-to-outlook-sync.zip` が出力されます（カレンダーIDはこのzipにだけ入り、リポには入りません）。
 3. [Power Automate](https://make.powerautomate.com) →「マイ フロー」→「インポート」→「パッケージのインポート (レガシ)」で zip をアップロードする
 4. 「関連リソース」の2つの接続で「インポート時に選択」を開き、それぞれ自分の接続を選ぶ（無ければ新規作成）→「インポート」
    - Office 365 Outlook: 会社のアカウント
    - Google Calendar: コピー元カレンダーを持つGoogleアカウント
-5. インポートされたフロー `Outlook Busy Copy` を開いてオンにし、「テスト」で手動実行して既定の予定表に予定が入ることを確認する。もう一度実行して、作成・削除が0件になれば正常です
+5. インポートされたフロー `Google to Outlook Sync` を開いてオンにし、「テスト」で手動実行して既定の予定表に予定が入ることを確認する。もう一度実行して、作成・削除が0件になれば正常です
 
 Outlook側の予定表はIDではなく名前で実行時に探すため、インポート後にフローを編集する必要はありません。名前を変えた場合は zip を作り直して再インポートしてください。
 

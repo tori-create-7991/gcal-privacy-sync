@@ -15,7 +15,7 @@ var path = require('path');
 var zlib = require('zlib');
 
 var TEMPLATE_PATH = path.join(__dirname, '..', 'power-automate', 'flow-definition.json');
-var DEFAULT_OUT = path.join(__dirname, '..', 'dist', 'outlook-busy-copy.zip');
+var DEFAULT_OUT = path.join(__dirname, '..', 'dist', 'google-to-outlook-sync.zip');
 var DEFAULT_TARGET = 'Calendar';
 
 // パッケージ内でリソース同士を参照するためのダミーID。値に意味はなく、固定でよい
