@@ -145,7 +145,7 @@ clasp push
    | `calendarId` | ○ | コピー先カレンダーID（`"primary"` でメインカレンダー） |
    | `eventTitle` | | このコピー先専用のタイトル（省略でソース側のデフォルトを使用） |
    | `eventColor` | | このコピー先専用の色（省略でソース側のデフォルトを使用） |
-   | `showAsBusy` | | このコピー先を「予定あり（busy）」として表示するか（省略で共通設定の `SHOW_AS_BUSY` を使用） |
+   | `showAsBusy` | | このコピー先を「予定あり（busy）」として表示するか（省略で共通設定の `SHOW_AS_BUSY` を使用）。`true` でも `FREE_IF_LONGER_THAN_HOURS` を超える長い予定は「空き時間」になる |
    | `descriptionMode` | | コピー先の予定に表示するdescription。`'full'`(元イベントのdescriptionをそのままコピー) / `'link'`(元予定へのリンクのみ) / `'none'`(常に空文字、省略時のデフォルト) |
    | `includeOriginalLink` | | 後方互換用。`descriptionMode`未指定時のみ、`true`→`'link'`, `false`→`'none'`として扱われる |
    | `organizerDestinations` | | （任意）主催者などの条件で **別カレンダーへコピー先を切り替える**ルール配列（下記） |
@@ -287,6 +287,7 @@ function getSyncPairsRaw() {
 | `DAYS_AFTER` | 未来何日分を同期 | `30` |
 | `COPY_ALL_DAY_EVENTS` | 終日イベントもコピー | `false` |
 | `EXCLUDE_NOT_ATTENDING` | 招待されているが「いいえ」または未回答の予定を同期対象から除外 | `true` |
+| `FREE_IF_LONGER_THAN_HOURS` | この時間を超える予定は「予定あり」設定のコピー先でも「空き時間」としてコピーする（宿泊・旅行などで空き時間表示が何日も埋まるのを防ぐ）。`0` で無効 | `24` |
 | `DEBUG_MODE` | デバッグログを出力 | `false` |
 
 ## 便利な関数

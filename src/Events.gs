@@ -38,7 +38,7 @@ function createEvent(destCalendar, sourceEvent, pair, syncTag, uniqueKey, common
     newEvent.setColor(String(pair.eventColor));
   }
 
-  applyVisibilityConfig(newEvent, effectiveConfig);
+  applyVisibilityConfig(newEvent, effectiveConfig, sourceEvent);
 
   return newEvent;
 }
@@ -65,7 +65,7 @@ function updateEvent(existingEvent, sourceEvent, pair, syncTag, uniqueKey, commo
     existingEvent.setColor(String(pair.eventColor));
   }
 
-  applyVisibilityConfig(existingEvent, effectiveConfig);
+  applyVisibilityConfig(existingEvent, effectiveConfig, sourceEvent);
 }
 
 /**
@@ -110,9 +110,10 @@ function needsUpdate(sourceEvent, existingEvent, pair, commonConfig, syncTag, un
   }
 
   // busy/free の差分を検出
-  if (effectiveConfig.SHOW_AS_BUSY != null) {
+  const showAsBusy = resolveShowAsBusy(effectiveConfig, sourceEvent);
+  if (showAsBusy != null) {
     try {
-      const expectedTransparency = effectiveConfig.SHOW_AS_BUSY
+      const expectedTransparency = showAsBusy
         ? CalendarApp.EventTransparency.OPAQUE
         : CalendarApp.EventTransparency.TRANSPARENT;
       if (existingEvent.getTransparency && existingEvent.getTransparency() !== expectedTransparency) {
@@ -194,15 +195,55 @@ function buildEffectiveConfig(commonConfig, pair) {
 /**
  * 予定の「予定あり/空き」を反映する
  */
-function applyVisibilityConfig(event, config) {
+function applyVisibilityConfig(event, config, sourceEvent) {
   try {
-    if (config.SHOW_AS_BUSY == null) {
+    const showAsBusy = resolveShowAsBusy(config, sourceEvent);
+    if (showAsBusy == null) {
       return;
     }
     event.setTransparency(
-      config.SHOW_AS_BUSY ? CalendarApp.EventTransparency.OPAQUE : CalendarApp.EventTransparency.TRANSPARENT
+      showAsBusy ? CalendarApp.EventTransparency.OPAQUE : CalendarApp.EventTransparency.TRANSPARENT
     );
   } catch (e) {
     // ignore
+  }
+}
+
+/**
+ * コピー先の予定を busy にするかを決める（null は「設定しない」）
+ * 宿泊などの長時間予定で空き時間表示が何日も埋まらないよう、長い予定は free にする
+ */
+function resolveShowAsBusy(config, sourceEvent) {
+  return shouldShowAsBusy(config.SHOW_AS_BUSY, getEventDurationMs(sourceEvent), config.FREE_IF_LONGER_THAN_HOURS);
+}
+
+/**
+ * @param {boolean|null} showAsBusy - コピー先の設定値
+ * @param {number|null} durationMs - 予定の長さ（不明なら null）
+ * @param {number} freeIfLongerThanHours - この時間を超える予定は free にする（0 や未指定で無効）
+ * 1日だけの終日予定はちょうど24時間なので、既定の24では busy のまま
+ */
+function shouldShowAsBusy(showAsBusy, durationMs, freeIfLongerThanHours) {
+  if (showAsBusy == null) return null;
+  if (!showAsBusy) return false;
+  if (freeIfLongerThanHours > 0 && durationMs != null && durationMs > freeIfLongerThanHours * 60 * 60 * 1000) {
+    return false;
+  }
+  return true;
+}
+
+var DAY_MS = 24 * 60 * 60 * 1000;
+
+function getEventDurationMs(sourceEvent) {
+  if (!sourceEvent) return null;
+  try {
+    if (sourceEvent.isAllDayEvent()) {
+      // 終了日は排他。夏時間の切り替え日でも日数で数えるよう丸める
+      const days = Math.round((sourceEvent.getAllDayEndDate().getTime() - sourceEvent.getAllDayStartDate().getTime()) / DAY_MS);
+      return days * DAY_MS;
+    }
+    return sourceEvent.getEndTime().getTime() - sourceEvent.getStartTime().getTime();
+  } catch (e) {
+    return null;
   }
 }
