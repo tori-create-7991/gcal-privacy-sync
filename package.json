@@ -8,6 +8,7 @@
     "deploy": "clasp deploy",
     "open": "clasp open",
     "login": "clasp login",
+    "build:flow": "node scripts/build-flow-package.js",
     "test": "node --test scripts/*.test.js"
   },
   "devDependencies": {

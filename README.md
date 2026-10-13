@@ -25,7 +25,10 @@
 │   ├── Utils.gs / Debug.gs / Triggers.gs
 │   └── appsscript.json
 ├── scripts/
-│   └── inject-sync-pairs.js  # CI で SYNC_PAIRS_JSON を注入
+│   ├── inject-sync-pairs.js  # CI で SYNC_PAIRS_JSON を注入
+│   └── build-flow-package.js # Power Automate インポート用 zip を生成
+├── power-automate/
+│   └── flow-definition.json  # Outlook 側コピーフローの定義（任意）
 ├── .github/workflows/deploy.yml
 ├── package.json
 ├── LICENSE
@@ -331,6 +334,43 @@ function getSyncPairsRaw() {
 4. Outlook側で「インターネットカレンダーの購読」にそのURLを貼る
 
 これでOutlook側にはタイトル・詳細を伏せた「予定あり」だけが数十分単位のラグで反映される。双方向・即時反映が必要な場合は OneCal / Reclaim.ai 等のサードパーティ同期サービスを検討してください。
+
+### 社内の空き時間表示に出す（Power Automate）
+
+Outlookで購読したカレンダーは「別の予定表」として扱われ、同僚のスケジュールアシスタント（空き時間表示）には出ません。さらに購読の更新はMicrosoft側の都合で数時間〜1日遅れます。
+社内に「予定あり」をすぐ見せたい場合は、GoogleカレンダーをPower Automateで直接読み、Outlookの既定の予定表へコピーするフローを使います（購読は不要です）。
+
+- 使うのは標準の Google Calendar コネクタと Office 365 Outlook コネクタです（Premiumライセンス・アプリ登録は不要）。組織のデータ損失防止（DLP）ポリシーで両者の併用が禁止されていると使えません
+- 15分ごとに、今から60日先までの予定を差分同期します（件名・開始・終了・予定あり/空きが同じものはそのまま、増えた分を作成、消えた分を削除）
+- Google Calendar コネクタは予定あり/空きを返さないため、フロー側で「24時間を超える予定は空き」と判定します（GAS の `FREE_IF_LONGER_THAN_HOURS` 既定値と同じ）
+- コピーした予定にはカテゴリ `GcalSync` が付きます。フローが削除するのはこのカテゴリが付いた予定だけで、手入力の予定には触れません（自分の予定に `GcalSync` を手で付けると削除対象になるので付けないでください）
+- 件名はコピー元のものをそのまま使います。伏せたい場合は、上の「中継カレンダー」手順2で `destinations` に指定する `eventTitle` で匿名化してください
+
+#### 手順
+
+1. コピー元にするGoogleカレンダーの **カレンダーID** を調べる（Googleカレンダーの設定 → 対象カレンダー →「カレンダーの統合」→「カレンダー ID」。例: `xxxx@group.calendar.google.com`）
+2. インポート用のzipを生成する。`--target` には既定の予定表のOutlook上の名前を指定する（省略時は `Calendar`。日本語環境では `予定表`）
+
+   ```bash
+   npm run build:flow -- --source "xxxx@group.calendar.google.com" --target "Calendar"
+   ```
+
+   `dist/google-to-outlook-sync.zip` が出力されます（カレンダーIDはこのzipにだけ入り、リポには入りません）。
+3. [Power Automate](https://make.powerautomate.com) →「マイ フロー」→「インポート」→「パッケージのインポート (レガシ)」で zip をアップロードする
+4. 「関連リソース」の2つの接続で「インポート時に選択」を開き、それぞれ自分の接続を選ぶ（無ければ新規作成）→「インポート」
+   - Office 365 Outlook: 会社のアカウント
+   - Google Calendar: コピー元カレンダーを持つGoogleアカウント
+5. インポートされたフロー `Google to Outlook Sync` を開いてオンにし、「テスト」で手動実行して既定の予定表に予定が入ることを確認する。もう一度実行して、作成・削除が0件になれば正常です
+
+Outlook側の予定表はIDではなく名前で実行時に探すため、インポート後にフローを編集する必要はありません。名前を変えた場合は zip を作り直して再インポートしてください。
+
+#### 注意
+
+- 反映の遅れは最大15分（＋GAS側の同期間隔）です
+- Google Calendar コネクタは一覧の1ページ目（最大250件）しか返しません。60日分の予定がそれを超える場合は取りこぼします
+- 終日予定は対象外です（GASの既定 `COPY_ALL_DAY_EVENTS: false` ではコピー元に入りません）
+- 指定した名前のOutlook予定表が見つからない場合、フローは何も削除せずに失敗します。実行履歴でエラーを確認してください
+- フローをやめるときは、フローをオフにしたあと、Outlookでカテゴリ `GcalSync` の予定を絞り込んで削除してください
 
 ### 戻ってきたコピーを無視する（`excludeTitles`）
 

@@ -1,0 +1,304 @@
+{
+  "name": "00000000-0000-0000-0000-000000000001",
+  "id": "/providers/Microsoft.Flow/flows/00000000-0000-0000-0000-000000000001",
+  "type": "Microsoft.Flow/flows",
+  "properties": {
+    "apiId": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+    "displayName": "Google to Outlook Sync",
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "frequency": "Minute",
+            "interval": 15
+          },
+          "runtimeConfiguration": {
+            "concurrency": {
+              "runs": 1
+            }
+          },
+          "type": "Recurrence"
+        }
+      },
+      "actions": {
+        "Window_start": {
+          "runAfter": {},
+          "type": "Compose",
+          "inputs": "@formatDateTime(utcNow(), 'yyyy-MM-ddTHH:mm:ss.fffZ')"
+        },
+        "Window_end": {
+          "runAfter": {
+            "Window_start": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@formatDateTime(addDays(outputs('Window_start'), 60), 'yyyy-MM-ddTHH:mm:ss.fffZ')"
+        },
+        "Get_source_events": {
+          "runAfter": {
+            "Window_end": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_googlecalendar",
+              "connectionName": "shared_googlecalendar",
+              "operationId": "ListEvents"
+            },
+            "parameters": {
+              "calendarId": "__SOURCE_CALENDAR_ID__",
+              "timeMin": "@outputs('Window_start')",
+              "timeMax": "@outputs('Window_end')"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Active_source_events": {
+          "runAfter": {
+            "Get_source_events": [
+              "Succeeded"
+            ]
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@body('Get_source_events')['items']",
+            "where": "@and(not(equals(item()?['status'], 'cancelled')), not(empty(item()?['start'])), not(empty(item()?['end'])))"
+          }
+        },
+        "Source_events": {
+          "runAfter": {
+            "Active_source_events": [
+              "Succeeded"
+            ]
+          },
+          "type": "Select",
+          "inputs": {
+            "from": "@body('Active_source_events')",
+            "select": {
+              "subject": "@coalesce(item()?['summary'], '')",
+              "start": "@formatDateTime(item()?['start'], 'yyyy-MM-ddTHH:mm:ss')",
+              "end": "@formatDateTime(item()?['end'], 'yyyy-MM-ddTHH:mm:ss')",
+              "showAs": "@if(greater(sub(ticks(item()?['end']), ticks(item()?['start'])), 864000000000), 'free', 'busy')"
+            }
+          }
+        },
+        "Get_calendars": {
+          "runAfter": {
+            "Source_events": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+              "connectionName": "shared_office365",
+              "operationId": "CalendarGetTables_V2"
+            },
+            "parameters": {},
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Target_calendar": {
+          "runAfter": {
+            "Get_calendars": [
+              "Succeeded"
+            ]
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@outputs('Get_calendars')?['body/value']",
+            "where": "@equals(item()?['name'], '__TARGET_CALENDAR_NAME__')"
+          }
+        },
+        "Get_target_events": {
+          "runAfter": {
+            "Target_calendar": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+              "connectionName": "shared_office365",
+              "operationId": "GetEventsCalendarViewV3"
+            },
+            "parameters": {
+              "calendarId": "@first(body('Target_calendar'))?['id']",
+              "startDateTimeUtc": "@outputs('Window_start')",
+              "endDateTimeUtc": "@outputs('Window_end')",
+              "$top": 999
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Managed_events": {
+          "runAfter": {
+            "Get_target_events": [
+              "Succeeded"
+            ]
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@outputs('Get_target_events')?['body/value']",
+            "where": "@contains(coalesce(item()?['categories'], json('[]')), 'GcalSync')"
+          }
+        },
+        "Source_keys": {
+          "runAfter": {
+            "Managed_events": [
+              "Succeeded"
+            ]
+          },
+          "type": "Select",
+          "inputs": {
+            "from": "@body('Source_events')",
+            "select": "@concat(coalesce(item()?['subject'], ''), '|', formatDateTime(item()?['start'], 'yyyy-MM-ddTHH:mm'), '|', formatDateTime(item()?['end'], 'yyyy-MM-ddTHH:mm'), '|', coalesce(item()?['showAs'], 'busy'))"
+          }
+        },
+        "Managed_keys": {
+          "runAfter": {
+            "Source_keys": [
+              "Succeeded"
+            ]
+          },
+          "type": "Select",
+          "inputs": {
+            "from": "@body('Managed_events')",
+            "select": "@concat(coalesce(item()?['subject'], ''), '|', formatDateTime(item()?['start'], 'yyyy-MM-ddTHH:mm'), '|', formatDateTime(item()?['end'], 'yyyy-MM-ddTHH:mm'), '|', coalesce(item()?['showAs'], 'busy'))"
+          }
+        },
+        "To_delete": {
+          "runAfter": {
+            "Managed_keys": [
+              "Succeeded"
+            ]
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@body('Managed_events')",
+            "where": "@not(contains(body('Source_keys'), concat(coalesce(item()?['subject'], ''), '|', formatDateTime(item()?['start'], 'yyyy-MM-ddTHH:mm'), '|', formatDateTime(item()?['end'], 'yyyy-MM-ddTHH:mm'), '|', coalesce(item()?['showAs'], 'busy'))))"
+          }
+        },
+        "To_create": {
+          "runAfter": {
+            "To_delete": [
+              "Succeeded"
+            ]
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@body('Source_events')",
+            "where": "@not(contains(body('Managed_keys'), concat(coalesce(item()?['subject'], ''), '|', formatDateTime(item()?['start'], 'yyyy-MM-ddTHH:mm'), '|', formatDateTime(item()?['end'], 'yyyy-MM-ddTHH:mm'), '|', coalesce(item()?['showAs'], 'busy'))))"
+          }
+        },
+        "Delete_stale": {
+          "runAfter": {
+            "To_create": [
+              "Succeeded"
+            ]
+          },
+          "type": "Foreach",
+          "foreach": "@body('To_delete')",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          },
+          "actions": {
+            "Delete_event": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                  "connectionName": "shared_office365",
+                  "operationId": "CalendarDeleteItem_V2"
+                },
+                "parameters": {
+                  "calendar": "@first(body('Target_calendar'))?['id']",
+                  "event": "@items('Delete_stale')?['id']"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          }
+        },
+        "Create_new": {
+          "runAfter": {
+            "Delete_stale": [
+              "Succeeded"
+            ]
+          },
+          "type": "Foreach",
+          "foreach": "@body('To_create')",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          },
+          "actions": {
+            "Create_event": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                  "connectionName": "shared_office365",
+                  "operationId": "V4CalendarPostItem"
+                },
+                "parameters": {
+                  "table": "@first(body('Target_calendar'))?['id']",
+                  "item/subject": "@coalesce(items('Create_new')?['subject'], '')",
+                  "item/start": "@items('Create_new')?['start']",
+                  "item/end": "@items('Create_new')?['end']",
+                  "item/timeZone": "(UTC) Coordinated Universal Time",
+                  "item/categories": [
+                    "GcalSync"
+                  ],
+                  "item/isReminderOn": false,
+                  "item/showAs": "@coalesce(items('Create_new')?['showAs'], 'busy')"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          }
+        }
+      }
+    },
+    "connectionReferences": {
+      "shared_office365": {
+        "connectionName": "shared-office365-placeholder",
+        "source": "Embedded",
+        "id": "/providers/Microsoft.PowerApps/apis/shared_office365",
+        "tier": "NotSpecified",
+        "apiName": "office365"
+      },
+      "shared_googlecalendar": {
+        "connectionName": "shared-googlecalendar-placeholder",
+        "source": "Embedded",
+        "id": "/providers/Microsoft.PowerApps/apis/shared_googlecalendar",
+        "tier": "NotSpecified",
+        "apiName": "googlecalendar"
+      }
+    },
+    "flowFailureAlertSubscribed": false,
+    "isManaged": false
+  }
+}
