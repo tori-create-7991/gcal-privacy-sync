@@ -119,11 +119,16 @@ test('deletion only targets events tagged with the managed category', function()
 test('source and managed events are compared with the same key expression', function() {
   var actions = builtDefinition({ source: 'Busy Block' }).properties.definition.actions;
   var key = actions.Source_keys.inputs.select.replace(/^@/, '');
-  assert.match(key, /subject.*formatDateTime\(item\(\)\?\['start'\].*formatDateTime\(item\(\)\?\['end'\]/);
+  assert.match(key, /subject.*formatDateTime\(item\(\)\?\['start'\].*formatDateTime\(item\(\)\?\['end'\].*showAs/);
   assert.strictEqual(actions.Managed_keys.inputs.select, '@' + key);
   assert.strictEqual(actions.To_delete.inputs.where, "@not(contains(body('Source_keys'), " + key + '))');
   assert.strictEqual(actions.To_create.inputs.where, "@not(contains(body('Managed_keys'), " + key + '))');
   assert.strictEqual(actions.To_create.inputs.from, actions.Source_keys.inputs.from);
+});
+
+test('copies keep the source busy/free state', function() {
+  var params = builtDefinition({ source: 'Busy Block' }).properties.definition.actions.Create_new.actions.Create_event.inputs.parameters;
+  assert.strictEqual(params['item/showAs'], "@coalesce(items('Create_new')?['showAs'], 'busy')");
 });
 
 test('scheduled runs do not overlap', function() {
