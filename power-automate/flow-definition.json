@@ -33,8 +33,26 @@
         }
       },
       "actions": {
-        "Get_source_events": {
+        "Window_start": {
           "runAfter": {},
+          "type": "Compose",
+          "inputs": "@formatDateTime(utcNow(), 'yyyy-MM-ddTHH:mm:ss.fffZ')"
+        },
+        "Window_end": {
+          "runAfter": {
+            "Window_start": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@formatDateTime(addDays(outputs('Window_start'), 60), 'yyyy-MM-ddTHH:mm:ss.fffZ')"
+        },
+        "Get_source_events": {
+          "runAfter": {
+            "Window_end": [
+              "Succeeded"
+            ]
+          },
           "type": "OpenApiConnection",
           "inputs": {
             "host": {
@@ -44,8 +62,8 @@
             },
             "parameters": {
               "calendarId": "__SOURCE_CALENDAR_ID__",
-              "timeMin": "@formatDateTime(utcNow(), 'yyyy-MM-ddTHH:mm:ss.fffZ')",
-              "timeMax": "@formatDateTime(addDays(utcNow(), 60), 'yyyy-MM-ddTHH:mm:ss.fffZ')"
+              "timeMin": "@outputs('Window_start')",
+              "timeMax": "@outputs('Window_end')"
             },
             "authentication": "@parameters('$authentication')"
           }
@@ -58,8 +76,8 @@
           },
           "type": "Query",
           "inputs": {
-            "from": "@coalesce(outputs('Get_source_events')?['body/items'], json('[]'))",
-            "where": "@not(equals(item()?['status'], 'cancelled'))"
+            "from": "@body('Get_source_events')['items']",
+            "where": "@and(not(equals(item()?['status'], 'cancelled')), not(empty(item()?['start'])), not(empty(item()?['end'])))"
           }
         },
         "Source_events": {
@@ -123,8 +141,8 @@
             },
             "parameters": {
               "calendarId": "@first(body('Target_calendar'))?['id']",
-              "startDateTimeUtc": "@utcNow()",
-              "endDateTimeUtc": "@addDays(utcNow(), 60)",
+              "startDateTimeUtc": "@outputs('Window_start')",
+              "endDateTimeUtc": "@outputs('Window_end')",
               "$top": 999
             },
             "authentication": "@parameters('$authentication')"

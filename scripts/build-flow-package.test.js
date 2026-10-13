@@ -150,12 +150,23 @@ test('source events are read from Google and normalised before diffing', functio
   assert.strictEqual(get.host.operationId, 'ListEvents');
   assert.strictEqual(get.parameters.calendarId, SOURCE_ID);
   assert.match(actions.Active_source_events.inputs.where, /cancelled/);
+  assert.match(actions.Active_source_events.inputs.where, /empty\(item\(\)\?\['start'\]\)/);
+  // items が無い応答を空扱いにしない(コピー済みの一括削除を防ぐ)
+  assert.strictEqual(actions.Active_source_events.inputs.from, "@body('Get_source_events')['items']");
   var select = actions.Source_events.inputs.select;
   assert.deepStrictEqual(Object.keys(select).sort(), ['end', 'showAs', 'start', 'subject']);
   // 24時間 = 864000000000 ticks を超えたら空き(GAS の FREE_IF_LONGER_THAN_HOURS と同じ判定)
   assert.match(select.showAs, /greater\(.*864000000000\), 'free', 'busy'\)/);
   assert.strictEqual(actions.Source_keys.inputs.from, "@body('Source_events')");
   assert.strictEqual(actions.To_create.inputs.from, "@body('Source_events')");
+});
+
+test('source and target are read over the same window', function() {
+  var actions = builtDefinition({ source: SOURCE_ID }).properties.definition.actions;
+  assert.strictEqual(actions.Get_source_events.inputs.parameters.timeMin, "@outputs('Window_start')");
+  assert.strictEqual(actions.Get_source_events.inputs.parameters.timeMax, "@outputs('Window_end')");
+  assert.strictEqual(actions.Get_target_events.inputs.parameters.startDateTimeUtc, "@outputs('Window_start')");
+  assert.strictEqual(actions.Get_target_events.inputs.parameters.endDateTimeUtc, "@outputs('Window_end')");
 });
 
 test('flow runs every 15 minutes', function() {
