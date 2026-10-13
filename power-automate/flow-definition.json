@@ -21,8 +21,8 @@
       "triggers": {
         "Recurrence": {
           "recurrence": {
-            "frequency": "Hour",
-            "interval": 1
+            "frequency": "Minute",
+            "interval": 15
           },
           "runtimeConfiguration": {
             "concurrency": {
@@ -33,8 +33,58 @@
         }
       },
       "actions": {
-        "Get_calendars": {
+        "Get_source_events": {
           "runAfter": {},
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_googlecalendar",
+              "connectionName": "shared_googlecalendar",
+              "operationId": "ListEvents"
+            },
+            "parameters": {
+              "calendarId": "__SOURCE_CALENDAR_ID__",
+              "timeMin": "@formatDateTime(utcNow(), 'yyyy-MM-ddTHH:mm:ss.fffZ')",
+              "timeMax": "@formatDateTime(addDays(utcNow(), 60), 'yyyy-MM-ddTHH:mm:ss.fffZ')"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Active_source_events": {
+          "runAfter": {
+            "Get_source_events": [
+              "Succeeded"
+            ]
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@coalesce(outputs('Get_source_events')?['body/items'], json('[]'))",
+            "where": "@not(equals(item()?['status'], 'cancelled'))"
+          }
+        },
+        "Source_events": {
+          "runAfter": {
+            "Active_source_events": [
+              "Succeeded"
+            ]
+          },
+          "type": "Select",
+          "inputs": {
+            "from": "@body('Active_source_events')",
+            "select": {
+              "subject": "@coalesce(item()?['summary'], '')",
+              "start": "@formatDateTime(item()?['start'], 'yyyy-MM-ddTHH:mm:ss')",
+              "end": "@formatDateTime(item()?['end'], 'yyyy-MM-ddTHH:mm:ss')",
+              "showAs": "@if(greater(sub(ticks(item()?['end']), ticks(item()?['start'])), 864000000000), 'free', 'busy')"
+            }
+          }
+        },
+        "Get_calendars": {
+          "runAfter": {
+            "Source_events": [
+              "Succeeded"
+            ]
+          },
           "type": "OpenApiConnection",
           "inputs": {
             "host": {
@@ -46,19 +96,11 @@
             "authentication": "@parameters('$authentication')"
           }
         },
-        "Source_calendar": {
-          "runAfter": {
-            "Get_calendars": ["Succeeded"]
-          },
-          "type": "Query",
-          "inputs": {
-            "from": "@outputs('Get_calendars')?['body/value']",
-            "where": "@equals(item()?['name'], '__SOURCE_CALENDAR_NAME__')"
-          }
-        },
         "Target_calendar": {
           "runAfter": {
-            "Source_calendar": ["Succeeded"]
+            "Get_calendars": [
+              "Succeeded"
+            ]
           },
           "type": "Query",
           "inputs": {
@@ -66,29 +108,11 @@
             "where": "@equals(item()?['name'], '__TARGET_CALENDAR_NAME__')"
           }
         },
-        "Get_source_events": {
-          "runAfter": {
-            "Target_calendar": ["Succeeded"]
-          },
-          "type": "OpenApiConnection",
-          "inputs": {
-            "host": {
-              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
-              "connectionName": "shared_office365",
-              "operationId": "GetEventsCalendarViewV3"
-            },
-            "parameters": {
-              "calendarId": "@first(body('Source_calendar'))?['id']",
-              "startDateTimeUtc": "@utcNow()",
-              "endDateTimeUtc": "@addDays(utcNow(), 60)",
-              "$top": 999
-            },
-            "authentication": "@parameters('$authentication')"
-          }
-        },
         "Get_target_events": {
           "runAfter": {
-            "Get_source_events": ["Succeeded"]
+            "Target_calendar": [
+              "Succeeded"
+            ]
           },
           "type": "OpenApiConnection",
           "inputs": {
@@ -108,7 +132,9 @@
         },
         "Managed_events": {
           "runAfter": {
-            "Get_target_events": ["Succeeded"]
+            "Get_target_events": [
+              "Succeeded"
+            ]
           },
           "type": "Query",
           "inputs": {
@@ -118,17 +144,21 @@
         },
         "Source_keys": {
           "runAfter": {
-            "Managed_events": ["Succeeded"]
+            "Managed_events": [
+              "Succeeded"
+            ]
           },
           "type": "Select",
           "inputs": {
-            "from": "@outputs('Get_source_events')?['body/value']",
+            "from": "@body('Source_events')",
             "select": "@concat(coalesce(item()?['subject'], ''), '|', formatDateTime(item()?['start'], 'yyyy-MM-ddTHH:mm'), '|', formatDateTime(item()?['end'], 'yyyy-MM-ddTHH:mm'), '|', coalesce(item()?['showAs'], 'busy'))"
           }
         },
         "Managed_keys": {
           "runAfter": {
-            "Source_keys": ["Succeeded"]
+            "Source_keys": [
+              "Succeeded"
+            ]
           },
           "type": "Select",
           "inputs": {
@@ -138,7 +168,9 @@
         },
         "To_delete": {
           "runAfter": {
-            "Managed_keys": ["Succeeded"]
+            "Managed_keys": [
+              "Succeeded"
+            ]
           },
           "type": "Query",
           "inputs": {
@@ -148,17 +180,21 @@
         },
         "To_create": {
           "runAfter": {
-            "To_delete": ["Succeeded"]
+            "To_delete": [
+              "Succeeded"
+            ]
           },
           "type": "Query",
           "inputs": {
-            "from": "@outputs('Get_source_events')?['body/value']",
+            "from": "@body('Source_events')",
             "where": "@not(contains(body('Managed_keys'), concat(coalesce(item()?['subject'], ''), '|', formatDateTime(item()?['start'], 'yyyy-MM-ddTHH:mm'), '|', formatDateTime(item()?['end'], 'yyyy-MM-ddTHH:mm'), '|', coalesce(item()?['showAs'], 'busy'))))"
           }
         },
         "Delete_stale": {
           "runAfter": {
-            "To_create": ["Succeeded"]
+            "To_create": [
+              "Succeeded"
+            ]
           },
           "type": "Foreach",
           "foreach": "@body('To_delete')",
@@ -188,7 +224,9 @@
         },
         "Create_new": {
           "runAfter": {
-            "Delete_stale": ["Succeeded"]
+            "Delete_stale": [
+              "Succeeded"
+            ]
           },
           "type": "Foreach",
           "foreach": "@body('To_create')",
@@ -213,8 +251,9 @@
                   "item/start": "@items('Create_new')?['start']",
                   "item/end": "@items('Create_new')?['end']",
                   "item/timeZone": "(UTC) Coordinated Universal Time",
-                  "item/categories": ["GcalSync"],
-                  "item/isAllDay": "@items('Create_new')?['isAllDay']",
+                  "item/categories": [
+                    "GcalSync"
+                  ],
                   "item/isReminderOn": false,
                   "item/showAs": "@coalesce(items('Create_new')?['showAs'], 'busy')"
                 },
@@ -232,6 +271,13 @@
         "id": "/providers/Microsoft.PowerApps/apis/shared_office365",
         "tier": "NotSpecified",
         "apiName": "office365"
+      },
+      "shared_googlecalendar": {
+        "connectionName": "shared-googlecalendar-placeholder",
+        "source": "Embedded",
+        "id": "/providers/Microsoft.PowerApps/apis/shared_googlecalendar",
+        "tier": "NotSpecified",
+        "apiName": "googlecalendar"
       }
     },
     "flowFailureAlertSubscribed": false,

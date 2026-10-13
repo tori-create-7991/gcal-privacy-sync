@@ -10,6 +10,7 @@ var pkg = require('./build-flow-package.js');
 
 var SCRIPT = path.join(__dirname, 'build-flow-package.js');
 var FLOW_DIR = 'Microsoft.Flow/flows/00000000-0000-0000-0000-000000000001/';
+var SOURCE_ID = 'example@group.calendar.google.com';
 
 /** 中央ディレクトリをたどって {name: Buffer} を返す */
 function readZip(buf) {
@@ -68,7 +69,7 @@ test('buildZip round-trips entry names and contents', function() {
 
 test('buildZip output passes an external zip integrity check', { skip: !hasUnzip() }, function() {
   var file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'flowpkg-')), 't.zip');
-  fs.writeFileSync(file, pkg.buildZip(pkg.buildPackageEntries({ source: 'Busy Block' })));
+  fs.writeFileSync(file, pkg.buildZip(pkg.buildPackageEntries({ source: SOURCE_ID })));
   childProcess.execFileSync('unzip', ['-tq', file]);
 });
 
@@ -78,7 +79,7 @@ function hasUnzip() {
 
 test('template keeps both calendar name placeholders', function() {
   var raw = fs.readFileSync(pkg.TEMPLATE_PATH, 'utf8');
-  assert.ok(raw.includes('__SOURCE_CALENDAR_NAME__'));
+  assert.ok(raw.includes('__SOURCE_CALENDAR_ID__'));
   assert.ok(raw.includes('__TARGET_CALENDAR_NAME__'));
 });
 
@@ -106,7 +107,7 @@ test('expressions only reference actions that exist', function() {
 });
 
 test('deletion only targets events tagged with the managed category', function() {
-  var actions = builtDefinition({ source: 'Busy Block' }).properties.definition.actions;
+  var actions = builtDefinition({ source: SOURCE_ID }).properties.definition.actions;
   assert.match(actions.Managed_events.inputs.where, /categories.*'GcalSync'/);
   assert.strictEqual(actions.To_delete.inputs.from, "@body('Managed_events')");
   assert.strictEqual(actions.Delete_stale.foreach, "@body('To_delete')");
@@ -117,7 +118,7 @@ test('deletion only targets events tagged with the managed category', function()
 });
 
 test('source and managed events are compared with the same key expression', function() {
-  var actions = builtDefinition({ source: 'Busy Block' }).properties.definition.actions;
+  var actions = builtDefinition({ source: SOURCE_ID }).properties.definition.actions;
   var key = actions.Source_keys.inputs.select.replace(/^@/, '');
   assert.match(key, /subject.*formatDateTime\(item\(\)\?\['start'\].*formatDateTime\(item\(\)\?\['end'\].*showAs/);
   assert.strictEqual(actions.Managed_keys.inputs.select, '@' + key);
@@ -127,21 +128,43 @@ test('source and managed events are compared with the same key expression', func
 });
 
 test('copies keep the source busy/free state', function() {
-  var params = builtDefinition({ source: 'Busy Block' }).properties.definition.actions.Create_new.actions.Create_event.inputs.parameters;
+  var params = builtDefinition({ source: SOURCE_ID }).properties.definition.actions.Create_new.actions.Create_event.inputs.parameters;
   assert.strictEqual(params['item/showAs'], "@coalesce(items('Create_new')?['showAs'], 'busy')");
 });
 
 test('scheduled runs do not overlap', function() {
-  var trigger = builtDefinition({ source: 'Busy Block' }).properties.definition.triggers.Recurrence;
+  var trigger = builtDefinition({ source: SOURCE_ID }).properties.definition.triggers.Recurrence;
   assert.strictEqual(trigger.runtimeConfiguration.concurrency.runs, 1);
 });
 
-test('same source and target calendar is rejected', function() {
-  assert.throws(function() { pkg.buildPackageEntries({ source: 'Calendar' }); }, /同じカレンダー名/);
+test('source must look like a Google calendar id', function() {
+  assert.throws(function() { pkg.buildPackageEntries({ source: 'Busy Block' }); }, /Google カレンダーの ID/);
+  assert.throws(function() { pkg.buildPackageEntries({ source: "x'@group.calendar.google.com" }); }, /Google カレンダーの ID/);
+  assert.doesNotThrow(function() { pkg.buildPackageEntries({ source: 'someone@gmail.com' }); });
+});
+
+test('source events are read from Google and normalised before diffing', function() {
+  var actions = builtDefinition({ source: SOURCE_ID }).properties.definition.actions;
+  var get = actions.Get_source_events.inputs;
+  assert.strictEqual(get.host.apiId, '/providers/Microsoft.PowerApps/apis/shared_googlecalendar');
+  assert.strictEqual(get.host.operationId, 'ListEvents');
+  assert.strictEqual(get.parameters.calendarId, SOURCE_ID);
+  assert.match(actions.Active_source_events.inputs.where, /cancelled/);
+  var select = actions.Source_events.inputs.select;
+  assert.deepStrictEqual(Object.keys(select).sort(), ['end', 'showAs', 'start', 'subject']);
+  // 24時間 = 864000000000 ticks を超えたら空き(GAS の FREE_IF_LONGER_THAN_HOURS と同じ判定)
+  assert.match(select.showAs, /greater\(.*864000000000\), 'free', 'busy'\)/);
+  assert.strictEqual(actions.Source_keys.inputs.from, "@body('Source_events')");
+  assert.strictEqual(actions.To_create.inputs.from, "@body('Source_events')");
+});
+
+test('flow runs every 15 minutes', function() {
+  var trigger = builtDefinition({ source: SOURCE_ID }).properties.definition.triggers.Recurrence;
+  assert.deepStrictEqual(trigger.recurrence, { frequency: 'Minute', interval: 15 });
 });
 
 test('package contains the five files of a legacy flow package', function() {
-  var names = pkg.buildPackageEntries({ source: 'Busy Block' }).map(function(e) { return e.name; });
+  var names = pkg.buildPackageEntries({ source: SOURCE_ID }).map(function(e) { return e.name; });
   assert.deepStrictEqual(names, [
     FLOW_DIR + 'apisMap.json',
     FLOW_DIR + 'connectionsMap.json',
@@ -153,31 +176,33 @@ test('package contains the five files of a legacy flow package', function() {
 
 test('manifest resources match the keys used by the flow maps', function() {
   var entries = {};
-  pkg.buildPackageEntries({ source: 'Busy Block' }).forEach(function(e) { entries[e.name] = JSON.parse(e.data); });
+  pkg.buildPackageEntries({ source: SOURCE_ID }).forEach(function(e) { entries[e.name] = JSON.parse(e.data); });
   var resources = entries['manifest.json'].resources;
-  assert.ok(resources[entries[FLOW_DIR + 'apisMap.json'].shared_office365]);
-  assert.ok(resources[entries[FLOW_DIR + 'connectionsMap.json'].shared_office365]);
+  ['shared_office365', 'shared_googlecalendar'].forEach(function(api) {
+    assert.ok(resources[entries[FLOW_DIR + 'apisMap.json'][api]], api);
+    assert.ok(resources[entries[FLOW_DIR + 'connectionsMap.json'][api]], api);
+    assert.ok(entries[FLOW_DIR + 'definition.json'].properties.connectionReferences[api], api);
+  });
   var flowKey = entries['Microsoft.Flow/flows/manifest.json'].flowAssets.assetPaths[0];
   assert.strictEqual(resources[flowKey].suggestedCreationType, 'New');
 });
 
 test('calendar names are embedded and no placeholder remains', function() {
-  var definition = builtDefinition({ source: 'Busy Block', target: '予定表' });
+  var definition = builtDefinition({ source: SOURCE_ID, target: '予定表' });
   var actions = definition.properties.definition.actions;
-  assert.strictEqual(actions.Source_calendar.inputs.where, "@equals(item()?['name'], 'Busy Block')");
   assert.strictEqual(actions.Target_calendar.inputs.where, "@equals(item()?['name'], '予定表')");
   assert.ok(!/__[A-Z_]+__/.test(JSON.stringify(definition)));
 });
 
 test('target calendar name defaults to Calendar', function() {
-  var actions = builtDefinition({ source: 'Busy Block' }).properties.definition.actions;
+  var actions = builtDefinition({ source: SOURCE_ID }).properties.definition.actions;
   assert.strictEqual(actions.Target_calendar.inputs.where, "@equals(item()?['name'], 'Calendar')");
 });
 
 test('quotes in calendar names are escaped for expressions and JSON', function() {
-  var entries = pkg.buildPackageEntries({ source: 'Ryo\'s "Busy"' });
+  var entries = pkg.buildPackageEntries({ source: SOURCE_ID, target: 'Ryo\'s "Busy"' });
   var entry = entries.filter(function(e) { return e.name === FLOW_DIR + 'definition.json'; })[0];
-  var where = JSON.parse(entry.data).properties.definition.actions.Source_calendar.inputs.where;
+  var where = JSON.parse(entry.data).properties.definition.actions.Target_calendar.inputs.where;
   assert.strictEqual(where, '@equals(item()?[\'name\'], \'Ryo\'\'s "Busy"\')');
 });
 
@@ -196,20 +221,30 @@ test('CLI exits non-zero without --source and writes a zip with it', function() 
   assert.strictEqual(failed.status, 1);
 
   var out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'flowpkg-')), 'nested', 'flow.zip');
-  var ok = childProcess.spawnSync(process.execPath, [SCRIPT, '--source', 'Busy Block', '--out', out]);
+  var ok = childProcess.spawnSync(process.execPath, [SCRIPT, '--source', SOURCE_ID, '--out', out]);
   assert.strictEqual(ok.status, 0, String(ok.stderr));
   assert.strictEqual(Object.keys(readZip(fs.readFileSync(out))).length, 5);
 });
 
+test('repo template carries no calendar ids or email addresses', function() {
+  var raw = fs.readFileSync(pkg.TEMPLATE_PATH, 'utf8');
+  assert.ok(!/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(raw));
+  assert.ok(!/AAMk[A-Za-z0-9_-]{20,}/.test(raw));
+});
+
 test('package carries no environment-specific identifiers', function() {
-  var text = pkg.buildPackageEntries({ source: 'Busy Block' })
+  // 渡したコピー元IDは zip に入ってよい(生成物はリポに置かない)。それ以外の固有値が無いことを見る
+  var text = pkg.buildPackageEntries({ source: SOURCE_ID })
     .map(function(e) { return e.data; })
-    .join('\n');
+    .join('\n')
+    .split(SOURCE_ID).join('');
   // パッケージ内の相互参照用に固定しているダミーキーだけを許可する
   var allowed = [
     '00000000-0000-0000-0000-000000000001',
     '00000000-0000-0000-0000-000000000002',
     '00000000-0000-0000-0000-000000000003',
+    '00000000-0000-0000-0000-000000000004',
+    '00000000-0000-0000-0000-000000000005',
   ];
   var guids = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) || [];
   guids.forEach(function(g) {

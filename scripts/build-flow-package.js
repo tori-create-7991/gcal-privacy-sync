@@ -1,13 +1,14 @@
 /**
  * Power Automate のインポート用パッケージ (.zip) を生成する
  *
- * power-automate/flow-definition.json のプレースホルダにカレンダー名を埋め、
+ * power-automate/flow-definition.json のプレースホルダにコピー元・コピー先を埋め、
  * 「Import Package (Legacy)」で読める形式の zip を dist/ に出力する。
  *
- *   node scripts/build-flow-package.js --source "Busy Block" [--target "Calendar"] [--out path.zip]
+ *   node scripts/build-flow-package.js --source "<GoogleカレンダーID>" [--target "Calendar"] [--out path.zip]
  *
- * 注意: カレンダーは ID ではなく名前で実行時に解決する。テナントID・カレンダーID等の
- * 環境固有の値をテンプレートに書かないこと(公開リポのため)。
+ * --source は Google カレンダーの ID(設定画面の「カレンダーID」)。Outlook 側(--target)は名前で実行時に解決する。
+ * 注意: テナントID・カレンダーID等の環境固有の値をテンプレートに書かないこと(公開リポのため)。
+ * 値は生成した zip にだけ入る。
  */
 var fs = require('fs');
 var path = require('path');
@@ -19,8 +20,20 @@ var DEFAULT_TARGET = 'Calendar';
 
 // パッケージ内でリソース同士を参照するためのダミーID。値に意味はなく、固定でよい
 var FLOW_RESOURCE_ID = '00000000-0000-0000-0000-000000000001';
-var API_RESOURCE_ID = '00000000-0000-0000-0000-000000000002';
-var CONNECTION_RESOURCE_ID = '00000000-0000-0000-0000-000000000003';
+var CONNECTORS = [
+  {
+    name: 'shared_office365',
+    displayName: 'Office 365 Outlook',
+    apiResourceId: '00000000-0000-0000-0000-000000000002',
+    connectionResourceId: '00000000-0000-0000-0000-000000000003',
+  },
+  {
+    name: 'shared_googlecalendar',
+    displayName: 'Google Calendar',
+    apiResourceId: '00000000-0000-0000-0000-000000000004',
+    connectionResourceId: '00000000-0000-0000-0000-000000000005',
+  },
+];
 
 var CRC_TABLE = (function() {
   var table = [];
@@ -119,21 +132,26 @@ function replacePlaceholders(node, values) {
   return node;
 }
 
+/** Google カレンダーIDの形(例: xxx@group.calendar.google.com / 自分のGmailアドレス)か */
+function isGoogleCalendarId(id) {
+  return /^[^@\s'"]+@[^@\s'"]+$/.test(id);
+}
+
 /**
  * @param {{source: string, target?: string}} options
  * @returns {{name: string, data: string}[]} zip に入れるファイル一覧
  */
 function buildPackageEntries(options) {
   if (!options || !options.source) {
-    throw new Error('--source <購読カレンダー名> を指定してください');
+    throw new Error('--source <GoogleカレンダーID> を指定してください');
+  }
+  if (!isGoogleCalendarId(options.source)) {
+    throw new Error('--source には Google カレンダーの ID を指定してください(例: xxx@group.calendar.google.com): ' + options.source);
   }
   var target = options.target || DEFAULT_TARGET;
-  if (options.source === target) {
-    throw new Error('--source と --target に同じカレンダー名は指定できません');
-  }
   var template = JSON.parse(fs.readFileSync(TEMPLATE_PATH, 'utf8'));
   var definition = replacePlaceholders(template, {
-    __SOURCE_CALENDAR_NAME__: escapeExpressionString(options.source),
+    __SOURCE_CALENDAR_ID__: options.source,
     __TARGET_CALENDAR_NAME__: escapeExpressionString(target),
   });
 
@@ -145,33 +163,41 @@ function buildPackageEntries(options) {
     details: { displayName: definition.properties.displayName },
     configurableBy: 'User',
     hierarchy: 'Root',
-    dependsOn: [API_RESOURCE_ID, CONNECTION_RESOURCE_ID],
+    dependsOn: CONNECTORS.reduce(function(ids, c) {
+      return ids.concat([c.apiResourceId, c.connectionResourceId]);
+    }, []),
   };
-  resources[API_RESOURCE_ID] = {
-    id: '/providers/Microsoft.PowerApps/apis/shared_office365',
-    name: 'shared_office365',
-    type: 'Microsoft.PowerApps/apis',
-    suggestedCreationType: 'Existing',
-    details: { displayName: 'Office 365 Outlook' },
-    configurableBy: 'System',
-    hierarchy: 'Child',
-    dependsOn: [],
-  };
-  resources[CONNECTION_RESOURCE_ID] = {
-    type: 'Microsoft.PowerApps/apis/connections',
-    suggestedCreationType: 'Existing',
-    creationType: 'Existing',
-    details: { displayName: 'Office 365 Outlook' },
-    configurableBy: 'User',
-    hierarchy: 'Child',
-    dependsOn: [API_RESOURCE_ID],
-  };
+  var apisMap = {};
+  var connectionsMap = {};
+  CONNECTORS.forEach(function(c) {
+    resources[c.apiResourceId] = {
+      id: '/providers/Microsoft.PowerApps/apis/' + c.name,
+      name: c.name,
+      type: 'Microsoft.PowerApps/apis',
+      suggestedCreationType: 'Existing',
+      details: { displayName: c.displayName },
+      configurableBy: 'System',
+      hierarchy: 'Child',
+      dependsOn: [],
+    };
+    resources[c.connectionResourceId] = {
+      type: 'Microsoft.PowerApps/apis/connections',
+      suggestedCreationType: 'Existing',
+      creationType: 'Existing',
+      details: { displayName: c.displayName },
+      configurableBy: 'User',
+      hierarchy: 'Child',
+      dependsOn: [c.apiResourceId],
+    };
+    apisMap[c.name] = c.apiResourceId;
+    connectionsMap[c.name] = c.connectionResourceId;
+  });
 
   var manifest = {
     schema: '1.0',
     details: {
       displayName: definition.properties.displayName,
-      description: 'Copy events from a subscribed calendar to the default calendar',
+      description: 'Copy events from a Google calendar to the Outlook default calendar',
       createdTime: '2026-01-01T00:00:00Z',
       packageTelemetryId: FLOW_RESOURCE_ID,
       creator: 'N/A',
@@ -182,8 +208,8 @@ function buildPackageEntries(options) {
 
   var flowDir = 'Microsoft.Flow/flows/' + FLOW_RESOURCE_ID + '/';
   return [
-    { name: flowDir + 'apisMap.json', data: JSON.stringify({ shared_office365: API_RESOURCE_ID }) },
-    { name: flowDir + 'connectionsMap.json', data: JSON.stringify({ shared_office365: CONNECTION_RESOURCE_ID }) },
+    { name: flowDir + 'apisMap.json', data: JSON.stringify(apisMap) },
+    { name: flowDir + 'connectionsMap.json', data: JSON.stringify(connectionsMap) },
     { name: flowDir + 'definition.json', data: JSON.stringify(definition) },
     {
       name: 'Microsoft.Flow/flows/manifest.json',
@@ -212,7 +238,7 @@ function main() {
     zip = buildZip(buildPackageEntries(options));
   } catch (e) {
     console.error(e.message);
-    console.error('使い方: node scripts/build-flow-package.js --source "<購読カレンダー名>" [--target "Calendar"] [--out path.zip]');
+    console.error('使い方: node scripts/build-flow-package.js --source "<GoogleカレンダーID>" [--target "Calendar"] [--out path.zip]');
     process.exit(1);
   }
   var out = options.out || DEFAULT_OUT;
