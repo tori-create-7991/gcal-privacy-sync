@@ -38,6 +38,45 @@ function inject(pairs) {
 
 var utils = loadGas([path.join(ROOT, 'src', 'Utils.gs')]);
 
+var events = loadGas([path.join(ROOT, 'src', 'Events.gs')]);
+var HOUR = 60 * 60 * 1000;
+
+test('shouldShowAsBusy turns long events free', function() {
+  assert.strictEqual(events.shouldShowAsBusy(true, 115 * HOUR, 24), false);
+  assert.strictEqual(events.shouldShowAsBusy(true, 24 * HOUR, 24), false);
+  assert.strictEqual(events.shouldShowAsBusy(true, 23 * HOUR, 24), true);
+});
+
+test('shouldShowAsBusy keeps existing behaviour when disabled or not busy', function() {
+  assert.strictEqual(events.shouldShowAsBusy(true, 115 * HOUR, 0), true);
+  assert.strictEqual(events.shouldShowAsBusy(true, 115 * HOUR, undefined), true);
+  assert.strictEqual(events.shouldShowAsBusy(true, null, 24), true);
+  assert.strictEqual(events.shouldShowAsBusy(false, 1 * HOUR, 24), false);
+  assert.strictEqual(events.shouldShowAsBusy(null, 115 * HOUR, 24), null);
+  assert.strictEqual(events.shouldShowAsBusy(undefined, 115 * HOUR, 24), null);
+});
+
+test('getEventDurationMs measures timed and all-day events', function() {
+  var timed = {
+    isAllDayEvent: function() { return false; },
+    getStartTime: function() { return new Date('2026-10-12T15:00:00+09:00'); },
+    getEndTime: function() { return new Date('2026-10-17T10:00:00+09:00'); },
+  };
+  var allDay = {
+    isAllDayEvent: function() { return true; },
+    getAllDayStartDate: function() { return new Date('2026-10-12T00:00:00+09:00'); },
+    getAllDayEndDate: function() { return new Date('2026-10-13T00:00:00+09:00'); },
+  };
+  assert.strictEqual(events.getEventDurationMs(timed), 115 * HOUR);
+  assert.strictEqual(events.getEventDurationMs(allDay), 24 * HOUR);
+  assert.strictEqual(events.getEventDurationMs(null), null);
+});
+
+test('default config frees events of 24 hours or longer', function() {
+  var config = loadGas([path.join(ROOT, 'src', 'Config.gs')]).getCommonConfig();
+  assert.strictEqual(config.FREE_IF_LONGER_THAN_HOURS, 24);
+});
+
 test('isExcludedTitle matches whole titles only', function() {
   assert.strictEqual(utils.isExcludedTitle('予定あり', ['予定あり']), true);
   assert.strictEqual(utils.isExcludedTitle('午後予定ありのため不在', ['予定あり']), false);

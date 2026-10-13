@@ -146,6 +146,10 @@ function getCommonConfig() {
     // コピー先の予定を「予定あり」として表示するか
     SHOW_AS_BUSY: true,
 
+    // この時間以上の予定は「予定あり」設定でも「空き時間」としてコピーする（0で無効）
+    // 宿泊や旅行など、日をまたぐ長い予定で空き時間表示が何日も埋まるのを防ぐ
+    FREE_IF_LONGER_THAN_HOURS: 24,
+
     // 元の予定へのリンクを説明文に含めるか
     INCLUDE_ORIGINAL_LINK: false,
 
