@@ -24,6 +24,12 @@ var SOURCE_ID_TAG_KEY = 'gcalPrivacySync.sourceId';
  *   'none' - 常に空文字（省略時はこれ。includeOriginalLink指定時は後方互換で 'link'/'none' に自動変換）
  * 同期の追跡情報（SYNC_TAG/SourceID）はdescriptionには出さず、予定の非表示メタデータに保持する。
  *
+ * disclose（コピー先ごと、任意）: 条件に合う予定だけ、件名・説明文・場所・終日予定を元のままコピーする。
+ *   markers: ['#公開']（件名か説明文に含む予定。予定単位）/ always: true（このコピー元の全予定。元カレンダー単位）
+ *   descriptionMode: 'full' | 'link' | 'none'（省略時 'none'）/ location: true（省略時 false）/ allDay: true（省略時 false）
+ *   未設定や書き間違いは公開されず、匿名のまま。詳細は Disclosure.gs と README を参照。
+ * copyAllDayEvents（コピー先ごと、任意）: 終日予定をコピーするか（省略で共通設定 COPY_ALL_DAY_EVENTS）。
+ *
  * organizerDestinations（任意）: そのコピー先について、主催者などの条件で別カレンダーへコピー先を切り替える。
  * 通常の同期ループ内で Calendar API の Events.get により主催者を判定します（Events.move は使いません）。
  *
@@ -98,6 +104,8 @@ function getSyncPairs() {
           includeOriginalLink: d.includeOriginalLink,
           descriptionMode: d.descriptionMode,
           organizerDestinations: d.organizerDestinations,
+          disclose: d.disclose,
+          copyAllDayEvents: d.copyAllDayEvents,
         };
       });
     } else {
@@ -118,6 +126,8 @@ function getSyncPairs() {
         includeOriginalLink: dest.includeOriginalLink,
         descriptionMode: dest.descriptionMode,
         organizerDestinations: dest.organizerDestinations,
+        disclose: dest.disclose,
+        copyAllDayEvents: dest.copyAllDayEvents,
       });
     });
   });

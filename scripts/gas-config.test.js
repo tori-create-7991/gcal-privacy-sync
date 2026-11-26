@@ -274,3 +274,32 @@ test('default config in the repo still expands without excludeTitles', function(
     assert.strictEqual(pair.excludeTitles, undefined);
   });
 });
+
+test('injection carries disclose and copyAllDayEvents to the expanded pairs', function() {
+  var disclose = { always: false, markers: ['#公開', "it's"], descriptionMode: 'full', location: true, allDay: true };
+  var configPath = inject([
+    {
+      name: 'work',
+      sourceCalendarId: 'src@example.com',
+      eventTitle: '',
+      destinations: [
+        { calendarId: 'a@group.calendar.google.com', eventTitle: '予定あり', showAsBusy: true, disclose: disclose, copyAllDayEvents: false },
+        { calendarId: 'b@group.calendar.google.com' },
+      ],
+    },
+  ]);
+  var pairs = plain(loadGas([configPath]).getSyncPairs());
+  assert.deepStrictEqual(pairs[0].disclose, disclose);
+  assert.strictEqual(pairs[0].copyAllDayEvents, false);
+  assert.strictEqual(pairs[1].disclose, undefined);
+  assert.strictEqual(pairs[1].copyAllDayEvents, undefined);
+});
+
+test('injection omits disclose and copyAllDayEvents when they are not set', function() {
+  var configPath = inject([
+    { name: 'plain', sourceCalendarId: 'plain@example.com', destinations: [{ calendarId: 'primary' }] },
+  ]);
+  var raw = fs.readFileSync(configPath, 'utf8').match(/SYNC_PAIRS_START[\s\S]*SYNC_PAIRS_END/)[0];
+  assert.ok(!raw.includes('disclose'));
+  assert.ok(!raw.includes('copyAllDayEvents'));
+});

@@ -6,7 +6,7 @@
  * 新しい予定を作成する
  */
 function createEvent(destCalendar, sourceEvent, pair, syncTag, uniqueKey, commonConfig) {
-  const title = pair.eventTitle || sourceEvent.getTitle();
+  const title = getCopyTitle(sourceEvent, pair);
   const effectiveConfig = buildEffectiveConfig(commonConfig, pair);
   const description = buildDisplayDescription(sourceEvent, effectiveConfig);
 
@@ -32,6 +32,10 @@ function createEvent(destCalendar, sourceEvent, pair, syncTag, uniqueKey, common
   }
 
   newEvent.setDescription(description);
+  const location = getCopyLocation(sourceEvent, pair);
+  if (location) {
+    newEvent.setLocation(location);
+  }
   applySyncTags(newEvent, syncTag, uniqueKey);
 
   if (pair.eventColor) {
@@ -47,7 +51,7 @@ function createEvent(destCalendar, sourceEvent, pair, syncTag, uniqueKey, common
  * 既存の予定を更新する
  */
 function updateEvent(existingEvent, sourceEvent, pair, syncTag, uniqueKey, commonConfig) {
-  const title = pair.eventTitle || sourceEvent.getTitle();
+  const title = getCopyTitle(sourceEvent, pair);
   const effectiveConfig = buildEffectiveConfig(commonConfig, pair);
 
   existingEvent.setTitle(title);
@@ -59,6 +63,8 @@ function updateEvent(existingEvent, sourceEvent, pair, syncTag, uniqueKey, commo
   }
 
   existingEvent.setDescription(buildDisplayDescription(sourceEvent, effectiveConfig));
+  // 公開をやめた予定から場所が残らないよう、空のときも明示的に上書きする
+  existingEvent.setLocation(getCopyLocation(sourceEvent, pair));
   applySyncTags(existingEvent, syncTag, uniqueKey);
 
   if (pair.eventColor) {
@@ -72,9 +78,13 @@ function updateEvent(existingEvent, sourceEvent, pair, syncTag, uniqueKey, commo
  * 予定の更新が必要かチェックする
  */
 function needsUpdate(sourceEvent, existingEvent, pair, commonConfig, syncTag, uniqueKey) {
-  const expectedTitle = pair.eventTitle || sourceEvent.getTitle();
+  const expectedTitle = getCopyTitle(sourceEvent, pair);
 
   if (existingEvent.getTitle() !== expectedTitle) {
+    return true;
+  }
+
+  if ((existingEvent.getLocation() || '') !== getCopyLocation(sourceEvent, pair)) {
     return true;
   }
 
@@ -139,7 +149,7 @@ function buildDisplayDescription(sourceEvent, effectiveConfig) {
   const mode = effectiveConfig.DESCRIPTION_MODE;
 
   if (mode === 'full') {
-    return sourceEvent.getDescription() || '';
+    return stripMarkers(sourceEvent.getDescription() || '', effectiveConfig.stripMarkers);
   }
 
   if (mode === 'link') {
@@ -188,6 +198,7 @@ function buildEffectiveConfig(commonConfig, pair) {
   return Object.assign({}, commonConfig, {
     SHOW_AS_BUSY: pair.showAsBusy != null ? pair.showAsBusy : commonConfig.SHOW_AS_BUSY,
     DESCRIPTION_MODE: descriptionMode,
+    stripMarkers: pair.stripMarkers || [],
     sourceCalendarId: pair.sourceCalendarId,
   });
 }

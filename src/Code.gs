@@ -133,18 +133,22 @@ function syncSinglePair(pair, commonConfig) {
       ? sourceEvent.getAllDayStartDate().getTime()
       : sourceEvent.getStartTime().getTime();
     const uniqueKey = sourceEvent.getId() + '_' + startTime;
-    sourceEventKeys.add(uniqueKey);
-    sourceEventByKey.set(uniqueKey, sourceEvent);
 
-    if (sourceEvent.isAllDayEvent() && !commonConfig.COPY_ALL_DAY_EVENTS) {
+    const resolved = resolveOrganizerDestination(pair, sourceEvent, apiEventCache);
+    const destCalendarId = resolved.destCalendarId;
+    // 公開対象の予定だけ件名・説明文・場所・終日を元のまま扱う（disclose 未設定なら常に匿名のまま）
+    const disclosure = applyDisclosure(mergePairOverrides(pair, resolved.overrides), sourceEvent);
+    const effectivePair = disclosure.pair;
+    const destCalendar = destCalendars[destCalendarId];
+
+    if (sourceEvent.isAllDayEvent() && !shouldCopyAllDay(effectivePair, disclosure.disclosed, commonConfig)) {
+      // sourceEventKeys に加えない: 公開をやめた終日予定などでコピー済みなら、後段の削除ループで削除される
       result.skipped++;
       return;
     }
 
-    const resolved = resolveOrganizerDestination(pair, sourceEvent, apiEventCache);
-    const destCalendarId = resolved.destCalendarId;
-    const effectivePair = mergePairOverrides(pair, resolved.overrides);
-    const destCalendar = destCalendars[destCalendarId];
+    sourceEventKeys.add(uniqueKey);
+    sourceEventByKey.set(uniqueKey, sourceEvent);
 
     if (!destCalendar) {
       result.skipped++;

@@ -20,6 +20,7 @@
 │   ├── Code.gs               # メイン同期
 │   ├── Config.gs             # 設定
 │   ├── Events.gs             # 作成・更新・説明文
+│   ├── Disclosure.gs         # 条件に合う予定だけ詳細を公開（任意）
 │   ├── OrganizerRouting.gs   # 主催者でコピー先切替（任意）
 │   ├── InviteRuleMatching.gs # ルール判定（Calendar API イベント用）
 │   ├── Utils.gs / Debug.gs / Triggers.gs
@@ -152,12 +153,47 @@ clasp push
    | `descriptionMode` | | コピー先の予定に表示するdescription。`'full'`(元イベントのdescriptionをそのままコピー) / `'link'`(元予定へのリンクのみ) / `'none'`(常に空文字、省略時のデフォルト) |
    | `includeOriginalLink` | | 後方互換用。`descriptionMode`未指定時のみ、`true`→`'link'`, `false`→`'none'`として扱われる |
    | `organizerDestinations` | | （任意）主催者などの条件で **別カレンダーへコピー先を切り替える**ルール配列（下記） |
+| `disclose` | | （任意）条件に合う予定だけ、件名・説明文・場所・終日予定を元のままコピーする（下記「詳細を見せる」）。未設定なら常に匿名のまま |
+| `copyAllDayEvents` | | このコピー先で終日予定をコピーするか（省略で共通設定の `COPY_ALL_DAY_EVENTS`）。`disclose` に合う予定は `disclose.allDay` が優先される |
 
    > 同期の追跡情報（どのソースイベントのコピーか）はdescriptionには一切書き込まず、予定の非表示メタデータ（`CalendarEvent.setTag`）に保持する。`descriptionMode: 'full'`にしても追跡用の文字列が混ざることはない。
 
    > **Note**: `SYNC_PAIRS_JSON` が未設定の場合、`src/Config.gs` のデフォルト値がそのまま使われます。
 
 5. **mainブランチにpushすると自動デプロイ**
+
+## 詳細を見せる（`disclose`）
+
+コピー先は、既定では「予定あり」などの匿名化した内容だけを受け取ります。
+`disclose` をコピー先に書くと、**条件に合う予定だけ**を件名・説明文・場所・終日予定ごと元のままコピーします（オプトイン）。たとえば「普段は予定ありだけ見せるが、出張の移動予定だけは中身も共有する」場合に使います。
+
+```javascript
+destinations: [
+  {
+    calendarId: 'share@group.calendar.google.com',
+    eventTitle: '予定あり',
+    showAsBusy: true,
+    descriptionMode: 'none',
+    disclose: {
+      markers: ['#公開'],        // 件名か説明文にこの文字列を含む予定だけ公開（予定単位）
+      // always: true,           // このコピー元の全予定を公開（元カレンダー単位）
+      descriptionMode: 'full',   // 公開時の説明文: 'full' | 'link' | 'none'（省略時 'none'）
+      location: true,            // 公開時に場所もコピー（省略時 false）
+      // allDay: true,         // 公開する終日予定もコピー（省略時 false）
+      // eventTitle: '出張',     // 公開時の件名を固定したいとき（省略時は元の件名）
+      // stripMarker: false,     // 目印をコピーに残すとき（省略時 true: 取り除く）
+    },
+  },
+]
+```
+
+- **予定単位**: 予定の件名か説明文に `#公開` を書いたものだけが対象です。件名を汚したくないときは説明文に書きます。目印は大文字小文字を区別しません。
+- **元カレンダー単位**: そのコピー元の `destinations` 内で `always: true` にします。`markers` と併用できます。
+- 公開されるのは `descriptionMode` / `location` で許可したものだけです。省略したときは件名だけです。
+- 目印を消すと、次回の同期でコピーは匿名に戻ります（場所と説明文も空に上書きされます）。公開されていた終日予定のコピーは削除されます。
+- `disclose` の書き間違い（`marker` のようなキー名の誤りなど）は公開されず、匿名のままになります。
+- 終日予定は、公開対象でも `allDay: true` を付けたときだけコピーされます（省略時はコピーしません）。公開対象でなければ共通設定 `COPY_ALL_DAY_EVENTS`（既定 `false`）に従います。匿名のまま終日予定もコピーしたいコピー先は `copyAllDayEvents: true` にします。
+- Outlook へ送る Power Automate フローがコピーするのは、現状は件名・時刻・予定あり/空きだけです。説明文と場所を Outlook に出すには、フロー側の対応が別途必要です。
 
 ## 主催者でコピー先を切り替える（`organizerDestinations`）
 

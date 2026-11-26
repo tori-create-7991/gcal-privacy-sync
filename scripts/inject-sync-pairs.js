@@ -43,6 +43,9 @@ function formatDest(d) {
   if (d.showAsBusy != null) lines.push(I3 + 'showAsBusy: ' + d.showAsBusy + ',');
   if (d.descriptionMode != null) lines.push(I3 + 'descriptionMode: ' + JSON.stringify(d.descriptionMode) + ',');
   if (d.includeOriginalLink != null) lines.push(I3 + 'includeOriginalLink: ' + d.includeOriginalLink + ',');
+  if (d.copyAllDayEvents != null) lines.push(I3 + 'copyAllDayEvents: ' + d.copyAllDayEvents + ',');
+  // disclose は入れ子のオブジェクト。JSON はそのまま JavaScript のリテラルとして有効
+  if (d.disclose != null && typeof d.disclose === 'object') lines.push(I3 + 'disclose: ' + JSON.stringify(d.disclose) + ',');
   if (d.organizerDestinations != null && Array.isArray(d.organizerDestinations) && d.organizerDestinations.length > 0) {
     lines.push(I3 + 'organizerDestinations: [');
     d.organizerDestinations.forEach(function(r, ri) {
